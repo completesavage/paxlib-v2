@@ -415,6 +415,8 @@ function renderAllGrid(list){
     c.addEventListener('click', () => openModal(bc));
     attachPosterGuard(c, bc);
   });
+}
+
 
   // lazy fetch covers for each card
   
