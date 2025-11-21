@@ -1,12 +1,18 @@
 <?php
 require __DIR__ . '/config.php';
 header('Content-Type: application/json');
+header('Content-Type: application/json');
 
 // ===== config =====
 $baseUrl  = 'https://leap.illinoisheartland.org/Polaris.ApplicationServices';
 $langCode = 'eng';
 $siteId   = '20';
 
+// if not using config.php, set these here
+if (!isset($username) || !isset($password)) {
+    $username = 'YOUR_USERNAME_HERE';
+    $password = 'YOUR_PASSWORD_HERE';
+}
 
 // which api path to hit, e.g. "polaris/699/3073/itemrecords/7033196/"
 $path = isset($_GET['path']) ? trim($_GET['path']) : '';
@@ -18,7 +24,7 @@ if ($path === '') {
 
 // optional method, default GET
 $method = isset($_GET['method']) ? strtoupper($_GET['method']) : 'GET';
-$allowedMethods = ['GET']; // add POST etc later if you need
+$allowedMethods = ['GET']; // add POST later if needed
 if (!in_array($method, $allowedMethods, true)) {
     http_response_code(405);
     echo json_encode(['error' => 'method not allowed']);
@@ -26,22 +32,24 @@ if (!in_array($method, $allowedMethods, true)) {
 }
 
 // ===== helper: curl request =====
-function do_request($method, $url, $headers = [], $body = null) {
+function do_request($method, $url, $headers = [], $body = null)
+{
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 
+    if ($body !== null) {
+        // explicit body (even if empty string) so content-length is set
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    }
+
     if (!empty($headers)) {
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     }
 
-    if ($body !== null) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-    }
-
-    // verify ssl (fine from your house)
+    // verify ssl
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 
@@ -63,13 +71,18 @@ $authUrl = $baseUrl . "/api/v1/$langCode/$siteId/authentication/staffuser";
 
 $basicToken = base64_encode($username . ':' . $password);
 
+$authHeaders = [
+    "Authorization: Basic $basicToken",
+    "Accept: application/json",
+    "Content-Length: 0"
+];
+
+// NOTE: body is explicit empty string -> content-length: 0
 list($status, $body, $err) = do_request(
     'POST',
     $authUrl,
-    [
-        "Authorization: Basic $basicToken",
-        "Accept: application/json"
-    ]
+    $authHeaders,
+    ''  // empty body to avoid 411
 );
 
 if ($err !== null) {
@@ -91,7 +104,10 @@ if (
     !isset($authData['AccessSecret'])
 ) {
     http_response_code(500);
-    echo json_encode(['error' => 'missing fields in auth response', 'auth' => $authData]);
+    echo json_encode([
+        'error' => 'missing fields in auth response',
+        'auth'  => $authData
+    ]);
     exit;
 }
 
