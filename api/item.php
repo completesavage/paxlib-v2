@@ -65,6 +65,35 @@ if ($status < 200 || $status >= 300) {
 
 // decode polaris json
 $data = json_decode($body, true);
+function build_cover_url($data) {
+    if (!isset($data['BibInfo'])) return null;
+    $b = $data['BibInfo'];
+
+    // prefer ISBN > UPC > OCLC
+    if (!empty($b['ISBN'])) {
+        $isbn = preg_replace('/[^0-9Xx]/', '', $b['ISBN']);
+        if ($isbn !== '') {
+            return "https://secure.syndetics.com/index.aspx?isbn={$isbn}/MC.GIF&client=ilheartland";
+        }
+    }
+
+    if (!empty($b['UPCNumber'])) {
+        $upc = preg_replace('/[^0-9]/', '', $b['UPCNumber']);
+        if ($upc !== '') {
+            return "https://secure.syndetics.com/index.aspx?upc={$upc}/MC.GIF&client=ilheartland";
+        }
+    }
+
+    if (!empty($b['OCLCNumber'])) {
+        // remove (OCOLC)
+        $oclc = preg_replace('/[^0-9]/', '', $b['OCLCNumber']);
+        if ($oclc !== '') {
+            return "https://secure.syndetics.com/index.aspx?oclc={$oclc}/MC.GIF&client=ilheartland";
+        }
+    }
+
+    return null;
+}
 if ($data === null) {
     echo json_encode([
         'ok'    => false,
@@ -76,7 +105,7 @@ if ($data === null) {
 
 // later you can add cover logic here if you want
 // for now, just send null so the front end falls back to NO_COVER
-$cover = null;
+$cover = build_cover_url($data);
 
 echo json_encode([
     'ok'      => true,
