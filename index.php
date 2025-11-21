@@ -451,34 +451,34 @@ function openModal(bc){
 
 // boot
 (async function boot(){
- try {
-  const res = await fetch(`api/item.php?barcode=${encodeURIComponent(bc)}`);
-  const j = await res.json();
-
-  const d = j.data || {};
-  const b = d.BibInfo || {};
-  const c = d.CirculationData || {};
-
-  // --- cover ---
-  if (j.cover) {
-    $('#mCover').src = j.cover;
+   try {
+    const res = await fetch(`api/item.php?barcode=${encodeURIComponent(bc)}`);
+    const j = await res.json();
+  
+    const d = j.data || {};
+    const b = d.BibInfo || {};
+    const c = d.CirculationData || {};
+  
+    // --- cover ---
+    if (j.cover) {
+      $('#mCover').src = j.cover;
+    }
+  
+    // --- fill modal fields ---
+    $('#mCall').textContent   = b.CallNumber || d.CallNumber || '—';
+    $('#mStatus').textContent = d.ItemStatusDescription || 'Unknown';
+    $('#mBranch').textContent = b.AssignedBranch || '—';
+  
+    // due date (BibInfo → CirculationData)
+    let due = b.DueDate || c.DueDate;
+    $('#mDue').textContent = due ? due : '—';
+  
+    // raw json for debugging
+    $('#mRaw').textContent = JSON.stringify(d, null, 2);
+  
+  } catch (e) {
+    console.error(e);
   }
-
-  // --- fill modal fields ---
-  $('#mCall').textContent   = b.CallNumber || d.CallNumber || '—';
-  $('#mStatus').textContent = d.ItemStatusDescription || 'Unknown';
-  $('#mBranch').textContent = b.AssignedBranch || '—';
-
-  // due date (BibInfo → CirculationData)
-  let due = b.DueDate || c.DueDate;
-  $('#mDue').textContent = due ? due : '—';
-
-  // raw json for debugging
-  $('#mRaw').textContent = JSON.stringify(d, null, 2);
-
-} catch (e) {
-  console.error(e);
-}
 
   const allList = ITEMS.map(x => x.barcode);
   renderAllGrid(allList);
