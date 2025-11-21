@@ -14,21 +14,17 @@ if ($barcode === '') {
     exit;
 }
 
-// prefix after /api/v1/eng/20/
-// this matches the test you showed in index.html:
-//   polaris/699/3073/itemrecords/7033196/
+// this is the prefix after /api/v1/eng/20/
+// adjust if your leap_proxy expects something different
 $prefix = 'polaris/699/3073';
 
-// build polaris path using barcode instead of item id
-// we tell polaris that the "id" is actually a barcode with isBarcode=true
-$barcodeEnc = rawurlencode($barcode);
+// tell polaris the "id" is a barcode
+$barcodeEnc  = rawurlencode($barcode);
 $polarisPath = $prefix . '/itemrecords/' . $barcodeEnc . '/?isBarcode=true';
 
-// build url to our local leap proxy
-$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-$host   = $_SERVER['HTTP_HOST'];
-
-// script name is like /api/item.php, so /api/../leap_proxy.php → /leap_proxy.php
+// build url to leap_proxy.php on this same host
+$scheme    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+$host      = $_SERVER['HTTP_HOST'];
 $scriptDir = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');
 $proxyUrl  = $scheme . $host . $scriptDir . '/../leap_proxy.php?path=' . urlencode($polarisPath);
 
@@ -39,10 +35,9 @@ curl_setopt_array($ch, [
     CURLOPT_HEADER         => false,
     CURLOPT_TIMEOUT        => 12,
 ]);
-
-$body   = curl_exec($ch);
+$body    = curl_exec($ch);
 $curlErr = curl_error($ch);
-$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$status  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
 
 if ($body === false) {
@@ -63,37 +58,7 @@ if ($status < 200 || $status >= 300) {
     exit;
 }
 
-// decode polaris json
 $data = json_decode($body, true);
-function build_cover_url($data) {
-    if (!isset($data['BibInfo'])) return null;
-    $b = $data['BibInfo'];
-
-    // prefer ISBN > UPC > OCLC
-    if (!empty($b['ISBN'])) {
-        $isbn = preg_replace('/[^0-9Xx]/', '', $b['ISBN']);
-        if ($isbn !== '') {
-            return "https://secure.syndetics.com/index.aspx?isbn={$isbn}/MC.GIF&client=ilheartland";
-        }
-    }
-
-    if (!empty($b['UPCNumber'])) {
-        $upc = preg_replace('/[^0-9]/', '', $b['UPCNumber']);
-        if ($upc !== '') {
-            return "https://secure.syndetics.com/index.aspx?upc={$upc}/MC.GIF&client=ilheartland";
-        }
-    }
-
-    if (!empty($b['OCLCNumber'])) {
-        // remove (OCOLC)
-        $oclc = preg_replace('/[^0-9]/', '', $b['OCLCNumber']);
-        if ($oclc !== '') {
-            return "https://secure.syndetics.com/index.aspx?oclc={$oclc}/MC.GIF&client=ilheartland";
-        }
-    }
-
-    return null;
-}
 if ($data === null) {
     echo json_encode([
         'ok'    => false,
@@ -103,13 +68,50 @@ if ($data === null) {
     exit;
 }
 
-// later you can add cover logic here if you want
-// for now, just send null so the front end falls back to NO_COVER
+// build syndetics cover url in the exact format you gave:
+// https://secure.syndetics.com/index.aspx?isbn=/MC.GIF&client=ilheartland&upc=786936837360&oclc=(OCOLC)000000933515860
+function build_cover_url(array $data) {
+    if (empty($data['BibInfo']) || !is_array($data['BibInfo'])) {
+        return null;
+    }
+    $b = $data['BibInfo'];
+
+    // base matches your example
+    $base   = 'https://secure.syndetics.com/index.aspx?isbn=/MC.GIF&client=ilheartland';
+
+    // prefer UPC, then OCLC
+    if (!empty($b['UPCNumber'])) {
+        // strip everything except digits
+        $upc = preg_replace('/[^0-9]/', '', $b['UPCNumber']);
+        if ($upc !== '') {
+            return $base . '&upc=' . rawurlencode($upc);
+        }
+    }
+
+    if (!empty($b['OCLCNumber'])) {
+        // keep the (OCOLC) prefix exactly as polaris gives it
+        $oclc = $b['OCLCNumber'];
+        return $base . '&oclc=' . rawurlencode($oclc);
+    }
+
+    // if you ever want to fall back to isbn itself:
+    // if (!empty($b['ISBN'])) {
+    //     $isbn = preg_replace('/[^0-9Xx]/', '', $b['ISBN']);
+    //     if ($isbn !== '') {
+    //         return 'https://secure.syndetics.com/index.aspx?isbn='
+    //             . rawurlencode($isbn . '/MC.GIF')
+    //             . '&client=ilheartland';
+    //     }
+    // }
+
+    return null;
+}
+
 $cover = build_cover_url($data);
 
 echo json_encode([
     'ok'      => true,
     'barcode' => $barcode,
     'cover'   => $cover,
-    'data'    => $data,   // full item record with BibInfo, CirculationData etc
+    'data'    => $data,
 ], JSON_UNESCAPED_UNICODE);
