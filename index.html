@@ -1,1 +1,58 @@
-test
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>leap api test</title>
+</head>
+<body>
+  <h1>leap api test</h1>
+
+  <form id="form">
+    <label>
+      api path after /api/v1/eng/20/ :
+      <input id="path" size="80"
+             value="polaris/699/3073/itemrecords/7033196/">
+    </label>
+    <button type="submit">go</button>
+  </form>
+
+  <pre id="out"></pre>
+
+  <script>
+    const form = document.getElementById('form');
+    const out  = document.getElementById('out');
+    const pathInput = document.getElementById('path');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const path = pathInput.value.trim();
+      if (!path) {
+        out.textContent = 'enter a path';
+        return;
+      }
+
+      out.textContent = 'loading...';
+
+      try {
+        const res = await fetch(
+          'leap_proxy.php?path=' + encodeURIComponent(path)
+        );
+
+        const text = await res.text();
+        let display;
+
+        try {
+          const json = JSON.parse(text);
+          display = JSON.stringify(json, null, 2);
+        } catch {
+          display = text;
+        }
+
+        out.textContent = 'status ' + res.status + '\n\n' + display;
+      } catch (err) {
+        out.textContent = 'error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
