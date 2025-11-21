@@ -401,6 +401,7 @@ function needsDetailFetch(it){
   return false;
 }
 
+// render grid and then lazy-load covers via item.php
 function renderAllGrid(list){
   const el = $('#grid-all');
   el.innerHTML = list.map(bc => {
@@ -414,6 +415,32 @@ function renderAllGrid(list){
     c.addEventListener('click', () => openModal(bc));
     attachPosterGuard(c, bc);
   });
+
+  // lazy fetch covers for each card
+  setTimeout(async () => {
+    for (const c of cards) {
+      const bc = c.getAttribute('data-bc');
+      const it = INDEX[bc] || {};
+      if (!needsDetailFetch(it)) continue;
+
+      try {
+        const res = await fetch(`api/item.php?barcode=${encodeURIComponent(bc)}`);
+        const j = await res.json();
+        const img = c.querySelector('.poster');
+
+        if (j.cover) {
+          if (!INDEX[bc]) INDEX[bc] = {barcode: bc};
+          INDEX[bc].cover = j.cover;
+          if (img) img.src = j.cover;
+        } else if (img) {
+          img.src = NO_COVER;
+        }
+      } catch (e) {
+        const img = c.querySelector('.poster');
+        if (img) img.src = NO_COVER;
+      }
+    }
+  }, 40);
 }
 
 // filters
