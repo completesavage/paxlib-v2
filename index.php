@@ -481,26 +481,26 @@ async function openModal(bc){
   $('#mDue').textContent    = '—';
   $('#mRaw').textContent    = '';
 
-  try {
+    try {
     const res = await fetch(`api/item.php?barcode=${encodeURIComponent(bc)}`);
     const j = await res.json();
     const d = j.data || {};
     const b = d.BibInfo || {};
     const c = d.CirculationData || {};
-
+  
     if (j.cover) {
       $('#mCover').src = j.cover;
       if (!INDEX[bc]) INDEX[bc] = {barcode:bc};
       INDEX[bc].cover = j.cover;
     }
-
+  
     $('#mCall').textContent   = b.CallNumber || d.CallNumber || '—';
     $('#mStatus').textContent = d.ItemStatusDescription || '—';
     $('#mBranch').textContent = b.AssignedBranch || '—';
-
+  
     const due = b.DueDate || c.DueDate || null;
     $('#mDue').textContent = due ? due : '—';
-
+  
     $('#mRaw').textContent = JSON.stringify(d, null, 2);
   } catch (e) {
     console.error(e);
