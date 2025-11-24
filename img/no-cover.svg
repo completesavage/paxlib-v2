@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" fill="none">
+  <rect width="200" height="300" fill="#1a211d"/>
+  <rect x="60" y="110" width="80" height="60" rx="4" stroke="#4ade80" stroke-width="2" fill="none"/>
+  <circle cx="80" cy="130" r="6" fill="#4ade80"/>
+  <path d="M65 160 L85 140 L105 155 L115 145 L135 165" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="100" y="200" text-anchor="middle" fill="#8a9a90" font-family="system-ui, sans-serif" font-size="14" font-weight="500">No Cover</text>
+  <text x="100" y="220" text-anchor="middle" fill="#8a9a90" font-family="system-ui, sans-serif" font-size="11">Available</text>
+</svg>
