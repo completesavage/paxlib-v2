@@ -1,11 +1,19 @@
 <?php
-// api/list.php
+/**
+ * api/list.php
+ * 
+ * Returns the list of DVDs from the CSV file.
+ * Optionally loads cached cover URLs if available.
+ */
+
 require __DIR__ . '/../config.php';
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: public, max-age=300'); // Cache for 5 minutes
 
-// path to your csv
+// Path to your CSV and cache file
 $csvPath = __DIR__ . '/../dvds.csv';
+$cachePath = __DIR__ . '/../data/covers_cache.json';
 
 if (!file_exists($csvPath)) {
     echo json_encode([
@@ -16,7 +24,7 @@ if (!file_exists($csvPath)) {
     exit;
 }
 
-$fh    = fopen($csvPath, 'r');
+$fh = fopen($csvPath, 'r');
 $items = [];
 
 if ($fh === false) {
@@ -28,8 +36,17 @@ if ($fh === false) {
     exit;
 }
 
+// Load cover cache if exists
+$coverCache = [];
+if (file_exists($cachePath)) {
+    $cacheJson = file_get_contents($cachePath);
+    $coverCache = json_decode($cacheJson, true) ?: [];
+}
+
+$noCover = defined('NO_COVER_PATH') ? NO_COVER_PATH : '/img/no-cover.svg';
+
 while (($row = fgetcsv($fh)) !== false) {
-    // expected columns:
+    // Expected columns:
     // 0 = id
     // 1 = title
     // 2 = barcode
@@ -50,20 +67,22 @@ while (($row = fgetcsv($fh)) !== false) {
         continue;
     }
 
+    // Check cache for cover URL
+    $cover = isset($coverCache[$barcode]) ? $coverCache[$barcode] : $noCover;
+
     $items[] = [
         'id'         => $id,
         'title'      => $title,
         'barcode'    => $barcode,
-        'rating'     => $rating,
-        // these can be filled later from leap if you want
+        'rating'     => normalizeRating($rating),
         'callNumber' => null,
-        'cover'      => defined('NO_COVER_PATH') ? NO_COVER_PATH : null,
+        'cover'      => $cover,
     ];
 }
 
 fclose($fh);
 
-// sort a–z by title so it is stable
+// Sort A-Z by title (stable sort)
 usort($items, function ($a, $b) {
     return strcasecmp($a['title'], $b['title']);
 });
@@ -71,4 +90,25 @@ usort($items, function ($a, $b) {
 echo json_encode([
     'ok'    => true,
     'items' => $items,
+    'count' => count($items)
 ], JSON_UNESCAPED_UNICODE);
+
+/**
+ * Normalize rating strings to consistent format
+ */
+function normalizeRating($rating) {
+    $rating = strtoupper(trim($rating));
+    
+    // Map common variations
+    $map = [
+        'PG13' => 'PG-13',
+        'PG 13' => 'PG-13',
+        'NC17' => 'NC-17',
+        'NC 17' => 'NC-17',
+        'NR' => 'NR',
+        'NOT RATED' => 'NR',
+        'UNRATED' => 'NR',
+    ];
+    
+    return isset($map[$rating]) ? $map[$rating] : $rating;
+}
