@@ -1,0 +1,11 @@
+{
+  "libraryName": "Paxton Carnegie Library",
+  "timeout": 60,
+  "warning": 15,
+  "showFeatured": true,
+  "showArrivals": true,
+  "sound": true,
+  "autoRefresh": true,
+  "featured": [],
+  "newArrivals": []
+}
