@@ -537,15 +537,40 @@ async function loadMovies() {
 
 // Render movie card
 function card(m) {
+  // If no cover, try to fetch from item API
+  const coverSrc = m.cover || NO_COVER;
   return `
     <div class="movie-card" data-barcode="${m.barcode}">
-      <img class="movie-poster" src="${m.cover || NO_COVER}" onerror="this.src='${NO_COVER}'" loading="lazy">
+      <img class="movie-poster" src="${coverSrc}" onerror="this.src='${NO_COVER}'" loading="lazy" data-barcode="${m.barcode}">
       <div class="movie-info">
         <div class="movie-title">${esc(m.title)}</div>
         ${m.rating ? `<span class="movie-rating">${esc(m.rating)}</span>` : ''}
       </div>
     </div>
   `;
+}
+
+// Load covers for movies without them (background)
+async function loadMissingCovers() {
+  const noCoverImgs = $$('.movie-poster[src="/img/no-cover.svg"]');
+  
+  for (const img of noCoverImgs) {
+    const bc = img.dataset.barcode;
+    if (!bc || !movieMap[bc]) continue;
+    
+    try {
+      const res = await fetch(`api/item.php?barcode=${encodeURIComponent(bc)}`);
+      const data = await res.json();
+      
+      if (data.ok && data.cover) {
+        img.src = data.cover;
+        movieMap[bc].cover = data.cover;
+      }
+    } catch (e) {}
+    
+    // Small delay to not hammer the API
+    await new Promise(r => setTimeout(r, 50));
+  }
 }
 
 // Render all sections
@@ -577,6 +602,19 @@ function renderAll() {
       $('#gridAll').innerHTML = movies.map(card).join('');
       
       attachClicks();
+      
+      // Load missing covers in background
+      setTimeout(loadMissingCovers, 500);
+    })
+    .catch(() => {
+      // Settings not found, just use defaults
+      $('#rowFeatured').innerHTML = movies.slice(0, 10).map(card).join('');
+      $('#rowNew').innerHTML = movies.slice(10, 20).map(card).join('');
+      $('#rowRecent').innerHTML = movies.slice(20, 35).map(card).join('');
+      $('#gridAll').innerHTML = movies.map(card).join('');
+      
+      attachClicks();
+      setTimeout(loadMissingCovers, 500);
     });
 }
 
