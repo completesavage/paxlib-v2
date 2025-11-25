@@ -17,7 +17,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-require_once __DIR__ . '/polaris.php';
+// Only load polaris.php for operations that need it
+$polarisLoaded = false;
+function loadPolaris() {
+    global $polarisLoaded;
+    if (!$polarisLoaded && file_exists(__DIR__ . '/polaris.php')) {
+        @include_once __DIR__ . '/polaris.php';
+        $polarisLoaded = class_exists('PolarisAPI');
+    }
+    return $polarisLoaded;
+}
 
 $dataDir = __DIR__ . '/../data';
 $cacheFile = "$dataDir/movies_cache.json";
@@ -205,19 +214,21 @@ if ($method === 'GET') {
             exit;
         }
         
-        // Fetch fresh availability from Polaris
-        try {
-            $api = new PolarisAPI();
-            $result = $api->getItemByBarcode($barcode);
-            
-            if ($result['ok'] && isset($result['data'])) {
-                $item = $result['data'];
-                $movie['status'] = $item['ItemStatusDescription'] ?? 'Unknown';
-                $movie['dueDate'] = $item['CirculationData']['DueDate'] ?? null;
-                $movie['lastCheckIn'] = $item['CheckInDate'] ?? null;
+        // Fetch fresh availability from Polaris (if available)
+        if (loadPolaris()) {
+            try {
+                $api = new PolarisAPI();
+                $result = $api->getItemByBarcode($barcode);
+                
+                if ($result['ok'] && isset($result['data'])) {
+                    $item = $result['data'];
+                    $movie['status'] = $item['ItemStatusDescription'] ?? 'Unknown';
+                    $movie['dueDate'] = $item['CirculationData']['DueDate'] ?? null;
+                    $movie['lastCheckIn'] = $item['CheckInDate'] ?? null;
+                }
+            } catch (Exception $e) {
+                // Keep cached data if API fails
             }
-        } catch (Exception $e) {
-            // Keep cached data if API fails
         }
         
         echo json_encode(['ok' => true, 'movie' => $movie]);
@@ -278,6 +289,12 @@ if ($method === 'PUT') {
     
     if ($action === 'rebuild') {
         // Rebuild entire cache from Polaris API
+        if (!loadPolaris()) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => 'Polaris API not available - check config.php']);
+            exit;
+        }
+        
         $csvMovies = loadFromCSV();
         $cache = [];
         $api = new PolarisAPI();
@@ -341,6 +358,12 @@ if ($method === 'PUT') {
         if (!$barcode) {
             http_response_code(400);
             echo json_encode(['ok' => false, 'error' => 'Missing barcode']);
+            exit;
+        }
+        
+        if (!loadPolaris()) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => 'Polaris API not available']);
             exit;
         }
         
