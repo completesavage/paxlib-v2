@@ -76,6 +76,7 @@ function saveOverrides($overrides) {
 
 /**
  * Load movies from CSV
+ * CSV format: id, title, barcode, rating, sort_title, short_sort_title
  */
 function loadFromCSV() {
     global $csvFile;
@@ -84,20 +85,29 @@ function loadFromCSV() {
     if (!file_exists($csvFile)) return $movies;
     
     $handle = fopen($csvFile, 'r');
-    $headers = fgetcsv($handle);
+    if (!$handle) return $movies;
     
     while (($row = fgetcsv($handle)) !== false) {
-        if (count($row) < 2) continue;
+        if (count($row) < 3) continue;
         
-        $movie = [];
-        foreach ($headers as $i => $header) {
-            $movie[strtolower(trim($header))] = isset($row[$i]) ? trim($row[$i]) : '';
-        }
+        $id = trim($row[0]);
+        $title = trim($row[1]);
+        $barcode = trim($row[2]);
+        $rating = isset($row[3]) ? trim($row[3]) : '';
         
-        if (!empty($movie['barcode'])) {
-            $movies[$movie['barcode']] = $movie;
-        }
+        if (empty($barcode) || empty($title)) continue;
+        
+        $movies[$barcode] = [
+            'id' => $id,
+            'title' => $title,
+            'barcode' => $barcode,
+            'rating' => $rating
+        ];
     }
+    
+    fclose($handle);
+    return $movies;
+}
     
     fclose($handle);
     return $movies;
