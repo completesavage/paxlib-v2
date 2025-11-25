@@ -156,6 +156,30 @@ function getMergedMovies() {
     return $movies;
 }
 
+/**
+ * Get movies with on-demand cover fetching (for when no cache exists)
+ */
+function getMoviesWithCovers() {
+    $movies = getMergedMovies();
+    
+    // If movies have no covers, try to build URLs from existing item data
+    foreach ($movies as &$movie) {
+        if (empty($movie['cover']) && (!empty($movie['upc']) || !empty($movie['oclc']))) {
+            $client = defined('SYNDETICS_CLIENT') ? SYNDETICS_CLIENT : 'ilheartland';
+            $base = "https://secure.syndetics.com/index.aspx?client={$client}";
+            
+            if (!empty($movie['upc'])) {
+                $movie['cover'] = "{$base}&upc={$movie['upc']}/MC.GIF";
+            } elseif (!empty($movie['oclc'])) {
+                $oclc = preg_replace('/[^0-9]/', '', $movie['oclc']);
+                $movie['cover'] = "{$base}&oclc={$oclc}/MC.GIF";
+            }
+        }
+    }
+    
+    return $movies;
+}
+
 // ============ HANDLE REQUEST ============
 
 $method = $_SERVER['REQUEST_METHOD'];
