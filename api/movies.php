@@ -109,9 +109,6 @@ function loadFromCSV() {
     return $movies;
 }
     
-    fclose($handle);
-    return $movies;
-}
 
 /**
  * Normalize rating
