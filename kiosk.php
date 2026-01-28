@@ -626,19 +626,17 @@ function doSearch(q) {
   if (!q) {
     searchResults.innerHTML = '';
     searchEmpty.style.display = 'block';
-    searchEmpty.innerHTML = `
-      <div style="font-size:40px;margin-bottom:10px;">🔍</div>
-      <div style="font-weight:600;">Search for a movie</div>
-      <div>Enter a title above</div>
-    `;
     return;
   }
   
-  // Search through the global movies array
-  const results = movies.filter(m => 
-    (m.title && m.title.toLowerCase().includes(q)) || 
-    (m.barcode && m.barcode.toLowerCase().includes(q))
-  );
+  const results = movies.filter(m => {
+    // Force barcode to a string, or an empty string if it's missing
+    const barcodeStr = m.barcode ? String(m.barcode) : "";
+    const titleStr = m.title ? String(m.title) : "";
+
+    return titleStr.toLowerCase().includes(q) || 
+           barcodeStr.toLowerCase().includes(q);
+  });
   
   if (results.length === 0) {
     searchResults.innerHTML = '';
@@ -652,49 +650,6 @@ function doSearch(q) {
     searchEmpty.style.display = 'none';
     searchResults.innerHTML = results.map(card).join('');
     attachClicks();
-  }
-}
-
-function attachClicks() {
-  $$('.movie-card').forEach(c => {
-    c.onclick = () => openMovie(c.dataset.barcode);
-  });
-}
-
-async function openMovie(barcode) {
-  currentMovie = movieMap[barcode] || { barcode };
-  
-  $('#modalTitle').textContent = currentMovie.title || 'Loading...';
-  $('#modalPoster').src = currentMovie.cover || NO_COVER;
-  $('#modalRating').textContent = currentMovie.rating || 'NR';
-  $('#modalBarcode').textContent = barcode;
-  $('#modalCall').textContent = currentMovie.callNumber || '—';
-  $('#modalLocation').textContent = currentMovie.location || 'DVD Section';
-  $('#modalStatus').textContent = 'Checking...';
-  $('#modalStatus').className = 'badge badge-status';
-  
-  $('#movieModal').classList.add('visible');
-  
-  try {
-    const res = await fetch(`api/movies.php?barcode=${encodeURIComponent(barcode)}`);
-    const data = await res.json();
-    
-    if (data.ok && data.movie) {
-      const m = data.movie;
-      if (m.cover) $('#modalPoster').src = m.cover;
-      $('#modalCall').textContent = m.callNumber || '—';
-      $('#modalLocation').textContent = m.location || 'DVD Section';
-      
-      const status = m.status || 'Unknown';
-      const isIn = status.toLowerCase().includes('in');
-      $('#modalStatus').textContent = status;
-      $('#modalStatus').className = 'badge badge-status ' + (isIn ? 'in' : 'out');
-      
-      currentMovie = m;
-      movieMap[barcode] = m; // Update cache
-    }
-  } catch (e) {
-    console.error('Failed to load movie details:', e);
   }
 }
 
