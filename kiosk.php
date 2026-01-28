@@ -543,11 +543,9 @@ const $$ = s => [...document.querySelectorAll(s)];
 
 // Initialize
 async function init() {
-  // Setup events FIRST so the search bar is ready to listen
-  setupEvents();
-  // Then load data
   await loadMovies();
   renderAll();
+  setupEvents();
 }
 
 // Load from cached movies API
@@ -556,12 +554,8 @@ async function loadMovies() {
     const res = await fetch('api/movies.php');
     const data = await res.json();
     if (data.ok) {
-      // Ensure we are assigning to the global variable
       movies = data.items || [];
-      movieMap = {};
-      movies.forEach(m => {
-        if (m.barcode) movieMap[m.barcode] = m;
-      });
+      movieMap = Object.fromEntries(movies.map(m => [m.barcode, m]));
       console.log(`Loaded ${movies.length} movies`);
     }
   } catch (e) {
@@ -590,19 +584,24 @@ function renderAll() {
     .then(data => {
       const s = data.settings || {};
       
+      // Featured
       const featuredBarcodes = s.featured || [];
       const featured = featuredBarcodes.map(bc => movieMap[bc]).filter(Boolean);
       $('#rowFeatured').innerHTML = featured.length 
         ? featured.map(card).join('') 
         : movies.slice(0, 10).map(card).join('');
       
+      // New arrivals
       const newBarcodes = s.newArrivals || [];
       const newArrivals = newBarcodes.map(bc => movieMap[bc]).filter(Boolean);
       $('#rowNew').innerHTML = newArrivals.length 
         ? newArrivals.map(card).join('') 
         : movies.slice(10, 20).map(card).join('');
       
+      // Recent
       $('#rowRecent').innerHTML = movies.slice(20, 35).map(card).join('');
+      
+      // All movies grid
       $('#gridAll').innerHTML = movies.map(card).join('');
       
       attachClicks();
@@ -612,11 +611,12 @@ function renderAll() {
       $('#rowNew').innerHTML = movies.slice(10, 20).map(card).join('');
       $('#rowRecent').innerHTML = movies.slice(20, 35).map(card).join('');
       $('#gridAll').innerHTML = movies.map(card).join('');
+      
       attachClicks();
     });
 }
 
-// Search - FIXED: Explicit filter check
+// Search - FIXED: Horizontal scroll with results
 function doSearch(q) {
   q = (q || '').toLowerCase().trim();
   
@@ -629,14 +629,12 @@ function doSearch(q) {
     return;
   }
   
-  const results = movies.filter(m => {
-    // Force barcode to a string, or an empty string if it's missing
-    const barcodeStr = m.barcode ? String(m.barcode) : "";
-    const titleStr = m.title ? String(m.title) : "";
-
-    return titleStr.toLowerCase().includes(q) || 
-           barcodeStr.toLowerCase().includes(q);
-  });
+  const results = movies.filter(m => 
+    (m.title || '').toLowerCase().includes(q) || 
+    (m.barcode || '').toLowerCase().includes(q)
+  );
+  
+  console.log(`Search for "${q}": found ${results.length} results`);
   
   if (results.length === 0) {
     searchResults.innerHTML = '';
@@ -653,10 +651,56 @@ function doSearch(q) {
   }
 }
 
+// Attach click handlers
+function attachClicks() {
+  $$('.movie-card').forEach(c => {
+    c.onclick = () => openMovie(c.dataset.barcode);
+  });
+}
+
+// Open movie modal
+async function openMovie(barcode) {
+  currentMovie = movieMap[barcode] || { barcode };
+  
+  $('#modalTitle').textContent = currentMovie.title || 'Loading...';
+  $('#modalPoster').src = currentMovie.cover || NO_COVER;
+  $('#modalRating').textContent = currentMovie.rating || 'NR';
+  $('#modalBarcode').textContent = barcode;
+  $('#modalCall').textContent = currentMovie.callNumber || '—';
+  $('#modalLocation').textContent = currentMovie.location || 'DVD Section';
+  $('#modalStatus').textContent = 'Checking...';
+  $('#modalStatus').className = 'badge badge-status';
+  
+  $('#movieModal').classList.add('visible');
+  
+  // Fetch fresh availability
+  try {
+    const res = await fetch(`api/movies.php?barcode=${encodeURIComponent(barcode)}`);
+    const data = await res.json();
+    
+    if (data.ok && data.movie) {
+      const m = data.movie;
+      if (m.cover) $('#modalPoster').src = m.cover;
+      $('#modalCall').textContent = m.callNumber || '—';
+      $('#modalLocation').textContent = m.location || 'DVD Section';
+      
+      const status = m.status || 'Unknown';
+      const isIn = status.toLowerCase().includes('in');
+      $('#modalStatus').textContent = status;
+      $('#modalStatus').className = 'badge badge-status ' + (isIn ? 'in' : 'out');
+      
+      currentMovie = m;
+    }
+  } catch (e) {
+    console.error('Failed to load movie details:', e);
+  }
+}
+
 function closeMovie() {
   $('#movieModal').classList.remove('visible');
 }
 
+// Login
 function showLogin() {
   $('#barcodeInput').value = '';
   $('#loginError').classList.remove('visible');
@@ -670,25 +714,51 @@ function closeLogin() {
 
 async function doLogin() {
   const barcode = $('#barcodeInput').value.trim();
-  if (!barcode) return;
+  
+  if (!barcode) {
+    $('#loginError').textContent = 'Please enter your card number';
+    $('#loginError').classList.add('visible');
+    return;
+  }
   
   try {
     const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`);
     const data = await res.json();
     
-    currentUser = (data.ok && data.patron) ? data.patron : { barcode, name: 'Library Member' };
-    
-    $('#userName').textContent = currentUser.name ? `Hello, ${currentUser.name}!` : 'Welcome!';
-    $('#userCard').textContent = `Card: ${currentUser.barcode}`;
+    if (data.ok && data.patron) {
+      currentUser = data.patron;
+      $('#userName').textContent = `Hello, ${currentUser.name}!`;
+      $('#userCard').textContent = `Card: ${currentUser.barcode}`;
+      $('#userInfo').classList.add('visible');
+      $('#btnLogin').style.display = 'none';
+      $('#btnLogout').style.display = 'block';
+      
+      closeLogin();
+      toast(`Welcome, ${currentUser.name}!`, 'success');
+      resetIdleTimer();
+    } else {
+      currentUser = { barcode, name: 'Library Member' };
+      $('#userName').textContent = 'Welcome!';
+      $('#userCard').textContent = `Card: ${barcode}`;
+      $('#userInfo').classList.add('visible');
+      $('#btnLogin').style.display = 'none';
+      $('#btnLogout').style.display = 'block';
+      
+      closeLogin();
+      toast('Signed in', 'success');
+      resetIdleTimer();
+    }
+  } catch (e) {
+    currentUser = { barcode, name: 'Library Member' };
+    $('#userName').textContent = 'Welcome!';
+    $('#userCard').textContent = `Card: ${barcode}`;
     $('#userInfo').classList.add('visible');
     $('#btnLogin').style.display = 'none';
     $('#btnLogout').style.display = 'block';
     
     closeLogin();
-    toast(`Welcome!`, 'success');
+    toast('Signed in', 'success');
     resetIdleTimer();
-  } catch (e) {
-    console.error('Login error', e);
   }
 }
 
@@ -701,6 +771,7 @@ function doLogout() {
   toast('Signed out');
 }
 
+// Request movie
 async function requestMovie(type) {
   if (!currentUser) {
     closeMovie();
@@ -732,46 +803,69 @@ async function requestMovie(type) {
     });
     
     const data = await res.json();
+    
     if (!data.ok) {
       toast('Request failed: ' + (data.error || 'Unknown error'), 'error');
       return;
     }
     
+    if (type === 'hold' && currentMovie.bibRecordId) {
+      try {
+        await fetch('api/hold.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patronBarcode: currentUser.barcode,
+            bibRecordId: currentMovie.bibRecordId,
+            itemBarcode: currentMovie.barcode
+          })
+        });
+      } catch (e) {
+        console.warn('Polaris hold failed:', e);
+      }
+    }
+    
     closeMovie();
-    $('#confirmIcon').textContent = type === 'hold' ? '📌' : '✅';
-    $('#confirmTitle').textContent = type === 'hold' ? 'Hold Placed!' : 'Request Sent!';
-    $('#confirmMsg').textContent = type === 'hold' 
-        ? `"${currentMovie.title}" is on hold.` 
-        : `Staff will pull "${currentMovie.title}" for you.`;
+    
+    if (type === 'hold') {
+      $('#confirmIcon').textContent = '📌';
+      $('#confirmTitle').textContent = 'Hold Placed!';
+      $('#confirmMsg').textContent = `"${currentMovie.title}" is on hold. We'll let you know when it's ready.`;
+    } else {
+      $('#confirmIcon').textContent = '✅';
+      $('#confirmTitle').textContent = 'Request Sent!';
+      $('#confirmMsg').textContent = `Staff will pull "${currentMovie.title}" for you. Please wait at the front desk.`;
+    }
     
     $('#confirmModal').classList.add('visible');
+    
   } catch (e) {
+    console.error('Request error:', e);
     toast('Request failed', 'error');
   }
 }
 
+// Event setup
 function setupEvents() {
+  // Tab navigation
   $$('.nav-btn').forEach(btn => {
     btn.onclick = () => {
-      const tab = btn.dataset.tab;
       $$('.nav-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       
       $$('.section').forEach(s => s.classList.remove('active'));
-      $(`#tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.add('active');
+      $(`#tab${btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1)}`).classList.add('active');
       
-      // Ensure search bar shows/hides
-      if (tab === 'search') {
-        $('#searchBar').classList.add('visible');
+      $('#searchBar').classList.toggle('visible', btn.dataset.tab === 'search');
+      if (btn.dataset.tab === 'search') {
         setTimeout(() => $('#searchInput').focus(), 100);
-      } else {
-        $('#searchBar').classList.remove('visible');
       }
       
       resetIdleTimer();
     };
   });
   
+  // Search with debounce
   let searchTimeout;
   $('#searchInput').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
@@ -781,14 +875,19 @@ function setupEvents() {
     }, 300);
   });
   
+  // Movie modal
   $('#btnCloseMovie').onclick = closeMovie;
   $('#btnRequestNow').onclick = () => requestMovie('now');
   $('#btnPlaceHold').onclick = () => requestMovie('hold');
+  $('#movieModal').onclick = e => { if (e.target.id === 'movieModal') closeMovie(); };
   
+  // Login
   $('#btnLogin').onclick = showLogin;
   $('#btnLogout').onclick = doLogout;
   $('#btnCancelLogin').onclick = closeLogin;
+  $('#loginModal').onclick = e => { if (e.target.id === 'loginModal') closeLogin(); };
   
+  // Numpad
   $$('.num-btn').forEach(b => {
     b.onclick = () => {
       const n = b.dataset.n;
@@ -801,19 +900,27 @@ function setupEvents() {
   });
   
   $('#barcodeInput').onkeypress = e => { if (e.key === 'Enter') doLogin(); };
+  
+  // Confirmation
   $('#btnConfirmOK').onclick = () => $('#confirmModal').classList.remove('visible');
+  
+  // Timeout
   $('#btnStayHere').onclick = () => { hideTimeout(); resetIdleTimer(); };
   
+  // Global activity
   document.addEventListener('click', resetIdleTimer);
+  document.addEventListener('touchstart', resetIdleTimer);
 }
 
+// Idle timeout
 function resetIdleTimer() {
+  if (!currentUser) return;
+  
   clearTimeout(idleTimer);
   clearInterval(warnInterval);
   hideTimeout();
-  if (currentUser) {
-    idleTimer = setTimeout(showTimeout, TIMEOUT_IDLE);
-  }
+  
+  idleTimer = setTimeout(showTimeout, TIMEOUT_IDLE);
 }
 
 function showTimeout() {
@@ -827,6 +934,7 @@ function showTimeout() {
     if (sec <= 0) {
       hideTimeout();
       doLogout();
+      toast('Session ended');
     }
   }, 1000);
 }
@@ -836,6 +944,7 @@ function hideTimeout() {
   clearInterval(warnInterval);
 }
 
+// Toast
 function toast(msg, type = '') {
   const t = $('#toast');
   t.textContent = msg;
@@ -843,13 +952,14 @@ function toast(msg, type = '') {
   setTimeout(() => t.classList.remove('visible'), 3000);
 }
 
+// Escape HTML
 function esc(s) {
-  if (!s) return '';
   const d = document.createElement('div');
-  d.textContent = s;
+  d.textContent = s || '';
   return d.innerHTML;
 }
 
+// Start
 init();
 </script>
 </body>
