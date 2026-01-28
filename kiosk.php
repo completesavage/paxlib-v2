@@ -105,7 +105,7 @@ body {
 .section { display: none; }
 .section.active { display: block; }
 
-/* Category row (horizontal scroll) */
+/* Category row (horizontal scroll) - FIXED: Show 4 cards, scroll horizontally */
 .category { margin-bottom: 25px; }
 .category-title {
   font-size: 18px;
@@ -114,20 +114,22 @@ body {
   padding: 0 20px 12px;
 }
 .category-scroll {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc(25% - 12px); /* Show exactly 4 cards */
   gap: 15px;
   overflow-x: auto;
   padding: 0 20px 10px;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
 }
-.category-scroll::-webkit-scrollbar { height: 6px; }
-.category-scroll::-webkit-scrollbar-track { background: #eee; border-radius: 3px; }
-.category-scroll::-webkit-scrollbar-thumb { background: #2e7d32; border-radius: 3px; }
+.category-scroll::-webkit-scrollbar { height: 8px; }
+.category-scroll::-webkit-scrollbar-track { background: #eee; border-radius: 4px; }
+.category-scroll::-webkit-scrollbar-thumb { background: #2e7d32; border-radius: 4px; }
 
-/* Movie card */
+/* Movie card - FIXED: Take full width in grid */
 .movie-card {
-  flex: 0 0 150px;
+  width: 100%;
   background: white;
   border-radius: 8px;
   overflow: hidden;
@@ -164,14 +166,35 @@ body {
   font-weight: 700;
 }
 
-/* Grid view (All Movies / Search) */
+/* Grid view (All Movies) - FIXED: Show 4 columns, scroll horizontally */
+.movie-grid-container {
+  overflow-x: auto;
+  padding: 0 20px 20px;
+}
 .movie-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 15px;
+  min-width: min-content;
+}
+
+/* Search Results - FIXED: Horizontal scroll with 4 visible */
+.search-results-container {
   padding: 0 20px;
 }
-.movie-grid .movie-card { flex: none; width: 100%; }
+.search-results-scroll {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc(25% - 12px);
+  gap: 15px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+.search-results-scroll::-webkit-scrollbar { height: 8px; }
+.search-results-scroll::-webkit-scrollbar-track { background: #eee; border-radius: 4px; }
+.search-results-scroll::-webkit-scrollbar-thumb { background: #2e7d32; border-radius: 4px; }
 
 /* Loading / Empty */
 .loading, .empty {
@@ -410,14 +433,18 @@ body {
   
   <!-- All Movies tab: grid -->
   <section class="section" id="tabAll">
-    <div class="movie-grid" id="gridAll">
-      <div class="loading" style="grid-column:1/-1;"><div class="spinner"></div>Loading...</div>
+    <div class="movie-grid-container">
+      <div class="movie-grid" id="gridAll">
+        <div class="loading"><div class="spinner"></div>Loading...</div>
+      </div>
     </div>
   </section>
   
-  <!-- Search tab: grid -->
+  <!-- Search tab: horizontal scroll -->
   <section class="section" id="tabSearch">
-    <div class="movie-grid" id="gridSearch"></div>
+    <div class="search-results-container">
+      <div class="search-results-scroll" id="searchResults"></div>
+    </div>
     <div class="empty" id="searchEmpty">
       <div style="font-size:40px;margin-bottom:10px;">🔍</div>
       <div style="font-weight:600;">Search for a movie</div>
@@ -589,41 +616,38 @@ function renderAll() {
     });
 }
 
-// Search - FIXED
+// Search - FIXED: Horizontal scroll with results
 function doSearch(q) {
   q = (q || '').toLowerCase().trim();
   
-  const gridSearch = $('#gridSearch');
+  const searchResults = $('#searchResults');
   const searchEmpty = $('#searchEmpty');
   
   if (!q) {
-    gridSearch.innerHTML = '';
+    searchResults.innerHTML = '';
     searchEmpty.style.display = 'block';
-    searchEmpty.innerHTML = `
-      <div style="font-size:40px;margin-bottom:10px;">🔍</div>
-      <div style="font-weight:600;">Search for a movie</div>
-      <div>Enter a title above</div>
-    `;
     return;
   }
   
   const results = movies.filter(m => 
     (m.title || '').toLowerCase().includes(q) || 
-    (m.barcode || '').includes(q)
+    (m.barcode || '').toLowerCase().includes(q)
   );
   
+  console.log(`Search for "${q}": found ${results.length} results`);
+  
   if (results.length === 0) {
-    gridSearch.innerHTML = '';
+    searchResults.innerHTML = '';
     searchEmpty.style.display = 'block';
     searchEmpty.innerHTML = `
       <div style="font-size:40px;margin-bottom:10px;">😕</div>
-      <div style="font-weight:600;">No movies found</div>
+      <div style="font-weight:600;">No movies found for "${esc(q)}"</div>
       <div>Try searching for something else</div>
     `;
   } else {
     searchEmpty.style.display = 'none';
-    gridSearch.innerHTML = results.map(card).join('');
-    attachClicks(); // FIXED: Attach clicks after search results are rendered
+    searchResults.innerHTML = results.map(card).join('');
+    attachClicks();
   }
 }
 
@@ -713,7 +737,6 @@ async function doLogin() {
       toast(`Welcome, ${currentUser.name}!`, 'success');
       resetIdleTimer();
     } else {
-      // Allow anyway as guest with barcode
       currentUser = { barcode, name: 'Library Member' };
       $('#userName').textContent = 'Welcome!';
       $('#userCard').textContent = `Card: ${barcode}`;
@@ -726,7 +749,6 @@ async function doLogin() {
       resetIdleTimer();
     }
   } catch (e) {
-    // Fallback: sign in anyway
     currentUser = { barcode, name: 'Library Member' };
     $('#userName').textContent = 'Welcome!';
     $('#userCard').textContent = `Card: ${barcode}`;
@@ -787,7 +809,6 @@ async function requestMovie(type) {
       return;
     }
     
-    // If hold, also try to place in Polaris
     if (type === 'hold' && currentMovie.bibRecordId) {
       try {
         await fetch('api/hold.php', {
@@ -844,15 +865,15 @@ function setupEvents() {
     };
   });
   
-  // Search with debounce - FIXED
+  // Search with debounce
   let searchTimeout;
-  $('#searchInput').oninput = (e) => {
+  $('#searchInput').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
       doSearch(e.target.value);
       resetIdleTimer();
     }, 300);
-  };
+  });
   
   // Movie modal
   $('#btnCloseMovie').onclick = closeMovie;
