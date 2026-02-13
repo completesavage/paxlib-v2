@@ -86,18 +86,21 @@ class PolarisAPI {
      * Get patron by barcode
      */
     public function getPatronByBarcode($barcode) {
-        $path = "polaris/{$this->orgId}/{$this->workstationId}/patrons/barcode/{$barcode}";
-        $result = $this->apiRequest('GET', $path);
-        
-        if ($result['ok'] && isset($result['data']['PatronID'])) {
-            // Get full patron data
-            $patronId = $result['data']['PatronID'];
-            $fullPath = "polaris/{$this->orgId}/{$this->workstationId}/patrons/{$patronId}";
-            return $this->apiRequest('GET', $fullPath);
+        // Step 1: Get PatronID from barcode
+        $pathId = "polaris/{$this->orgId}/{$this->workstationId}/ids/patrons?id={$barcode}&type=barcode";
+        $resultId = $this->apiRequest('GET', $pathId);
+    
+        if (!$resultId['ok'] || empty($resultId['data'])) {
+            return ['ok' => false, 'error' => 'Patron not found', 'raw' => $resultId['raw']];
         }
-        
-        return $result;
+    
+        $patronId = is_array($resultId['data']) ? $resultId['data'][0] : $resultId['data'];
+    
+        // Step 2: Get full patron data
+        $pathPatron = "polaris/{$this->orgId}/{$this->workstationId}/patrons/{$patronId}/";
+        return $this->apiRequest('GET', $pathPatron);
     }
+
     
     /**
      * Place a hold request using workflow API
