@@ -616,26 +616,32 @@ function renderAll() {
     });
 }
 
-// Search - FIXED: Horizontal scroll with results
+const defaultSearchEmptyHTML = `
+  <div style="font-size:40px;margin-bottom:10px;">🔍</div>
+  <div style="font-weight:600;">Search for a movie</div>
+  <div>Enter a title above</div>
+`;
+
 function doSearch(q) {
   q = (q || '').toLowerCase().trim();
-  
+
   const searchResults = $('#searchResults');
   const searchEmpty = $('#searchEmpty');
-  
+
   if (!q) {
     searchResults.innerHTML = '';
     searchEmpty.style.display = 'block';
+    searchEmpty.innerHTML = defaultSearchEmptyHTML;
     return;
   }
-  
-  const results = movies.filter(m => 
-    (m.title || '').toLowerCase().includes(q) || 
+
+  const results = movies.filter(m =>
+    (m.title || '').toLowerCase().includes(q) ||
     (m.barcode || '').toLowerCase().includes(q)
   );
-  
+
   console.log(`Search for "${q}": found ${results.length} results`);
-  
+
   if (results.length === 0) {
     searchResults.innerHTML = '';
     searchEmpty.style.display = 'block';
