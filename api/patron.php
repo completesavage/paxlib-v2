@@ -1,6 +1,6 @@
 <?php
 /**
- * Patron API
+ * Patron API (Debug Mode)
  * GET ?barcode=XXX - Look up patron by barcode, return name and ID
  */
 
@@ -21,39 +21,47 @@ try {
     $api = new PolarisAPI();
     $result = $api->getPatronByBarcode($barcode);
 
-    if ($result['ok'] && isset($result['data']['PatronID'])) {
+    // DEBUG: Log raw API response
+    error_log("PolarisAPI response for barcode $barcode: " . print_r($result, true));
+
+    if ($result['ok'] && isset($result['data'])) {
         $patron = $result['data'];
 
-        // Build display name
         $firstName = $patron['NameFirst'] ?? '';
         $lastName = $patron['NameLast'] ?? '';
-        $displayName = trim("$firstName $lastName") ?: ($patron['Barcode'] ?? $barcode);
+        $displayName = trim("$firstName $lastName");
+
+        if (empty($displayName)) {
+            $displayName = $patron['Barcode'] ?? $barcode;
+        }
 
         echo json_encode([
             'ok' => true,
             'patron' => [
-                'id' => $patron['PatronID'],
+                'id' => $patron['PatronID'] ?? null,
                 'barcode' => $patron['Barcode'] ?? $barcode,
                 'name' => $displayName,
                 'firstName' => $firstName,
                 'lastName' => $lastName,
-                'email' => $patron['EmailAddress'] ?? '',
-                'phone' => $patron['PhoneVoice1'] ?? '',
-                'expirationDate' => $patron['ExpirationDate'] ?? ''
+                'email' => $patron['EmailAddress'] ?? null,
+                'phone' => $patron['PhoneVoice1'] ?? null,
+                'expirationDate' => $patron['ExpirationDate'] ?? null
             ]
         ]);
     } else {
+        // Return raw debug info if patron not found
         http_response_code(404);
         echo json_encode([
             'ok' => false,
             'error' => 'Patron not found',
-            'details' => $result['error'] ?? null
+            'details' => $result // <-- raw response from Polaris
         ]);
     }
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
         'ok' => false,
-        'error' => 'Server error: ' . $e->getMessage()
+        'error' => 'Server error: ' . $e->getMessage(),
+        'details' => null
     ]);
 }
