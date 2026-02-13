@@ -20,30 +20,26 @@ if (empty($barcode)) {
 try {
     $api = new PolarisAPI();
     $result = $api->getPatronByBarcode($barcode);
-    
-    if ($result['ok'] && isset($result['data'])) {
+
+    if ($result['ok'] && isset($result['data']['PatronID'])) {
         $patron = $result['data'];
-        
+
         // Build display name
         $firstName = $patron['NameFirst'] ?? '';
         $lastName = $patron['NameLast'] ?? '';
-        $displayName = trim("$firstName $lastName");
-        
-        if (empty($displayName)) {
-            $displayName = $patron['Barcode'] ?? $barcode;
-        }
-        
+        $displayName = trim("$firstName $lastName") ?: ($patron['Barcode'] ?? $barcode);
+
         echo json_encode([
             'ok' => true,
             'patron' => [
-                'id' => $patron['PatronID'] ?? null,
+                'id' => $patron['PatronID'],
                 'barcode' => $patron['Barcode'] ?? $barcode,
                 'name' => $displayName,
                 'firstName' => $firstName,
                 'lastName' => $lastName,
-                'email' => $patron['EmailAddress'] ?? null,
-                'phone' => $patron['PhoneVoice1'] ?? null,
-                'expirationDate' => $patron['ExpirationDate'] ?? null
+                'email' => $patron['EmailAddress'] ?? '',
+                'phone' => $patron['PhoneVoice1'] ?? '',
+                'expirationDate' => $patron['ExpirationDate'] ?? ''
             ]
         ]);
     } else {
