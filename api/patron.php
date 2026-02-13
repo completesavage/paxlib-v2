@@ -24,17 +24,16 @@ try {
     // DEBUG: Log raw API response
     error_log("PolarisAPI response for barcode $barcode: " . print_r($result, true));
 
-    if ($result['ok'] && isset($result['data'])) {
-        $patron = $result['data'];
-
-        $firstName = $patron['NameFirst'] ?? '';
-        $lastName = $patron['NameLast'] ?? '';
+   if ($result['ok'] && isset($result['data']['Registration'])) {
+        $reg = $result['data']['Registration'];
+    
+        $firstName = $reg['NameFirst'] ?? '';
+        $lastName = $reg['NameLast'] ?? '';
         $displayName = trim("$firstName $lastName");
-
         if (empty($displayName)) {
-            $displayName = $patron['Barcode'] ?? $barcode;
+            $displayName = $reg['PatronFullName'] ?? $patron['Barcode'] ?? $barcode;
         }
-
+    
         echo json_encode([
             'ok' => true,
             'patron' => [
@@ -43,20 +42,20 @@ try {
                 'name' => $displayName,
                 'firstName' => $firstName,
                 'lastName' => $lastName,
-                'email' => $patron['EmailAddress'] ?? null,
-                'phone' => $patron['PhoneVoice1'] ?? null,
-                'expirationDate' => $patron['ExpirationDate'] ?? null
+                'email' => $reg['EmailAddress'] ?? null,
+                'phone' => $reg['PhoneVoice1'] ?? null,
+                'expirationDate' => $reg['ExpirationDate'] ?? null
             ]
         ]);
     } else {
-        // Return raw debug info if patron not found
         http_response_code(404);
         echo json_encode([
             'ok' => false,
             'error' => 'Patron not found',
-            'details' => $result // <-- raw response from Polaris
+            'details' => $result
         ]);
     }
+
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
