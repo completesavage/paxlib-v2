@@ -720,53 +720,52 @@ function closeLogin() {
 
 async function doLogin() {
   const barcode = $('#barcodeInput').value.trim();
-  
+
   if (!barcode) {
     $('#loginError').textContent = 'Please enter your card number';
     $('#loginError').classList.add('visible');
     return;
   }
-  
+
+  // optional: basic barcode format check (prevents junk like "hello")
+  if (!/^\d{5,20}$/.test(barcode)) {
+    $('#loginError').textContent = 'Invalid barcode format';
+    $('#loginError').classList.add('visible');
+    return;
+  }
+
   try {
     const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`);
     const data = await res.json();
-    
-    if (data.ok && data.patron) {
-      currentUser = data.patron;
-      $('#userName').textContent = `Hello, ${currentUser.name}!`;
-      $('#userCard').textContent = `Card: ${currentUser.barcode}`;
-      $('#userInfo').classList.add('visible');
-      $('#btnLogin').style.display = 'none';
-      $('#btnLogout').style.display = 'block';
-      
-      closeLogin();
-      toast(`Welcome, ${currentUser.name}!`, 'success');
-      resetIdleTimer();
-    } else {
-      currentUser = { barcode, name: 'Library Member' };
-      $('#userName').textContent = 'Welcome!';
-      $('#userCard').textContent = `Card: ${barcode}`;
-      $('#userInfo').classList.add('visible');
-      $('#btnLogin').style.display = 'none';
-      $('#btnLogout').style.display = 'block';
-      
-      closeLogin();
-      toast('Signed in', 'success');
-      resetIdleTimer();
+
+    if (!data.ok || !data.patron) {
+      $('#loginError').textContent = 'Card not found';
+      $('#loginError').classList.add('visible');
+      toast('Invalid library card', 'error');
+      return;
     }
-  } catch (e) {
-    currentUser = { barcode, name: 'Library Member' };
-    $('#userName').textContent = 'Welcome!';
-    $('#userCard').textContent = `Card: ${barcode}`;
+
+    currentUser = data.patron;
+
+    $('#userName').textContent = `Hello, ${currentUser.name}!`;
+    $('#userCard').textContent = `Card: ${currentUser.barcode}`;
     $('#userInfo').classList.add('visible');
     $('#btnLogin').style.display = 'none';
     $('#btnLogout').style.display = 'block';
-    
+
     closeLogin();
-    toast('Signed in', 'success');
+    toast(`Welcome, ${currentUser.name}!`, 'success');
     resetIdleTimer();
+
+  } catch (e) {
+    console.error("Login API error:", e);
+
+    $('#loginError').textContent = 'Login system unavailable';
+    $('#loginError').classList.add('visible');
+    toast('Login failed. Try again.', 'error');
   }
 }
+
 
 function doLogout() {
   currentUser = null;
