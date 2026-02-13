@@ -637,7 +637,7 @@ function doSearch(q) {
 
   const results = movies.filter(m =>
     (m.title || '').toLowerCase().includes(q) ||
-    (m.barcode || '').toLowerCase().includes(q)
+    String(m.barcode || '').toLowerCase().includes(q)
   );
 
   console.log(`Search for "${q}": found ${results.length} results`);
