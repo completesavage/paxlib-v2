@@ -735,34 +735,34 @@ async function loadStatuses() {
   console.log('Movies with bibRecordId:', moviesWithBibId.length);
   console.log('Movies without bibRecordId:', movies.length - moviesWithBibId.length);
   
-  // Sample a few movies to see their structure
-  console.log('Sample movie data:', movies.slice(0, 3));
-  
   try {
-    // TEMPORARY: Test with just 10 movies first
-    console.log('Testing with limit=10 first...');
-    const res = await fetch('api/bulk-status.php?all=true&limit=10');
+    console.log('Fetching availability for all movies...');
+    const res = await fetch('api/bulk-status.php?all=true');
     console.log('Bulk status response status:', res.status);
     
+    if (!res.ok) {
+      console.error('Response not OK:', res.status, res.statusText);
+      return;
+    }
+    
     const responseText = await res.text();
-    console.log('Raw response:', responseText);
+    console.log('Response received, length:', responseText.length);
     
     let data;
     try {
       data = JSON.parse(responseText);
     } catch (e) {
       console.error('Failed to parse response as JSON:', e);
-      console.error('Response was:', responseText);
+      console.error('First 500 chars:', responseText.substring(0, 500));
       return;
     }
     
-    console.log('Bulk status response:', data);
+    console.log('Parsed response:', data);
     
     if (data.ok) {
       movieStatuses = data.statuses;
       statusesLoaded = true;
       console.log(`Loaded ${data.checked} item statuses`);
-      console.log('Sample statuses:', Object.entries(movieStatuses).slice(0, 5));
       
       // Update movie objects with availability
       let availableCount = 0;
@@ -771,8 +771,6 @@ async function loadStatuses() {
           m.available = movieStatuses[m.barcode].available;
           m.statusText = movieStatuses[m.barcode].status;
           if (m.available) availableCount++;
-        } else {
-          console.warn('No status found for barcode:', m.barcode, m.title);
         }
       });
       
@@ -782,7 +780,7 @@ async function loadStatuses() {
       updateFilterCounts();
       renderAll(); // Re-render with availability info
     } else {
-      console.error('Failed to load statuses:', data);
+      console.error('API returned error:', data);
     }
   } catch (e) {
     console.error('Failed to load statuses:', e);
