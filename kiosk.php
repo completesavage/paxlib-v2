@@ -704,10 +704,11 @@ const $$ = s => [...document.querySelectorAll(s)];
 // Initialize
 async function init() {
   await loadMovies();
-  loadStatuses(); // Load in background, don't wait
+  await loadStatuses(); // Load initial cache
   renderAll();
   setupEvents();
-  startAutoRefresh(); // Start 10-minute refresh timer
+  startAutoRefresh(); // Refresh cache from disk every 2 minutes
+  startContinuousCheck(); // Start continuous background checking (never stops)
 }
 
 // Load from cached movies API
@@ -727,58 +728,92 @@ async function loadMovies() {
 }
 
 // Load availability statuses for all movies
+// Load availability from cache initially, then start continuous updates
 async function loadStatuses() {
   console.log('Loading availability from cache...');
   
   try {
     const res = await fetch('api/bulk-status.php?all=true');
-    
-    if (!res.ok) {
-      console.error('Response not OK:', res.status);
-      return;
-    }
-    
     const data = await res.json();
-    console.log('Cache response:', data);
     
     if (data.ok) {
       movieStatuses = data.statuses;
       statusesLoaded = true;
       
-      console.log(`Loaded ${data.checked} statuses`);
-      if (data.cached) {
-        console.log(`From cache (age: ${data.cacheAge}s, updated: ${data.lastUpdated || 'unknown'})`);
-      }
-      if (data.refreshing) {
-        console.log('Background refresh in progress...');
-      }
+      console.log(`Loaded ${data.checked} statuses from cache`);
       
-      // Update movie objects
-      let availableCount = 0;
-      movies.forEach(m => {
-        if (movieStatuses[m.barcode]) {
-          m.available = movieStatuses[m.barcode].available;
-          m.statusText = movieStatuses[m.barcode].status;
-          if (m.available) availableCount++;
-        }
-      });
-      
-      console.log(`${availableCount} available out of ${movies.length} movies`);
-      
-      updateFilterCounts();
-      renderAll();
+      // Update movies
+      updateMovieAvailability();
     }
   } catch (e) {
-    console.error('Failed to load statuses:', e);
+    console.error('Failed to load initial cache:', e);
   }
 }
 
-// Auto-refresh availability every 10 minutes
+// Update movie availability from current status cache
+function updateMovieAvailability() {
+  let availableCount = 0;
+  movies.forEach(m => {
+    if (movieStatuses[m.barcode]) {
+      m.available = movieStatuses[m.barcode].available;
+      m.statusText = movieStatuses[m.barcode].status;
+      if (m.available) availableCount++;
+    }
+  });
+  
+  console.log(`${availableCount} available out of ${movies.length} movies`);
+  updateFilterCounts();
+  renderAll();
+}
+
+// Continuously check availability in the background
+async function startContinuousCheck() {
+  console.log('Starting continuous availability checker...');
+  
+  while (true) {
+    try {
+      const res = await fetch('api/continuous-availability.php');
+      const data = await res.json();
+      
+      if (data.ok) {
+        console.log(`Checked batch: ${data.percentComplete}% complete (cycle age: ${Math.floor(data.cycleAge/60)}min)`);
+        
+        // Reload cache to get updated statuses
+        const cacheRes = await fetch('api/bulk-status.php?all=true');
+        const cacheData = await cacheRes.json();
+        
+        if (cacheData.ok) {
+          movieStatuses = cacheData.statuses;
+          updateMovieAvailability();
+        }
+      }
+      
+      // Wait 15 seconds before next batch (gives time for API calls)
+      await new Promise(resolve => setTimeout(resolve, 15000));
+      
+    } catch (e) {
+      console.error('Continuous check error:', e);
+      // Wait 30 seconds on error before retrying
+      await new Promise(resolve => setTimeout(resolve, 30000));
+    }
+  }
+}
+
+// Auto-refresh - reload cache every 2 minutes (since continuous checker is updating it)
 function startAutoRefresh() {
-  setInterval(() => {
-    console.log('Auto-refreshing availability...');
-    loadStatuses();
-  }, 10 * 60 * 1000); // 10 minutes
+  setInterval(async () => {
+    console.log('Refreshing cache from disk...');
+    try {
+      const res = await fetch('api/bulk-status.php?all=true');
+      const data = await res.json();
+      if (data.ok) {
+        movieStatuses = data.statuses;
+        updateMovieAvailability();
+      }
+    } catch (e) {
+      console.error('Auto-refresh error:', e);
+    }
+  }, 2 * 60 * 1000); // 2 minutes
 }
 
 // Set filter
@@ -936,9 +971,13 @@ async function openMovie(barcode) {
   $('#modalStatus').textContent = 'Checking...';
   $('#modalStatus').className = 'badge badge-status';
   
+  // Hide both buttons initially while checking
+  $('#btnRequestNow').style.display = 'none';
+  $('#btnPlaceHold').style.display = 'block';
+  
   $('#movieModal').classList.add('visible');
   
-  // Fetch fresh availability
+  // Fetch fresh real-time availability
   try {
     const res = await fetch(`api/movies.php?barcode=${encodeURIComponent(barcode)}`);
     const data = await res.json();
@@ -950,14 +989,30 @@ async function openMovie(barcode) {
       $('#modalLocation').textContent = m.location || 'DVD Section';
       
       const status = m.status || 'Unknown';
-      const isIn = status.toLowerCase().includes('in');
+      const isAvailable = status.toLowerCase().includes('in') && 
+                         !status.toLowerCase().includes('transit') &&
+                         !status.toLowerCase().includes('hold');
+      
       $('#modalStatus').textContent = status;
-      $('#modalStatus').className = 'badge badge-status ' + (isIn ? 'in' : 'out');
+      $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
+      
+      // Show appropriate buttons based on availability
+      if (isAvailable) {
+        $('#btnRequestNow').style.display = 'block';
+        $('#btnPlaceHold').style.display = 'block';
+      } else {
+        $('#btnRequestNow').style.display = 'none';
+        $('#btnPlaceHold').style.display = 'block';
+      }
       
       currentMovie = m;
+      currentMovie.available = isAvailable;
     }
   } catch (e) {
     console.error('Failed to load movie details:', e);
+    // On error, only show Place Hold to be safe
+    $('#btnRequestNow').style.display = 'none';
+    $('#btnPlaceHold').style.display = 'block';
   }
 }
 
