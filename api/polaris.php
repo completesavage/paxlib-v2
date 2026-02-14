@@ -100,69 +100,135 @@ class PolarisAPI {
         $pathPatron = "polaris/{$this->orgId}/{$this->workstationId}/patrons/{$patronId}/";
         return $this->apiRequest('GET', $pathPatron);
     }
-
     
     /**
-     * Place a hold request using workflow API
+     * Place a local hold request with automatic handling of conversation steps
      */
-    public function placeHold($patronBarcode, $bibRecordId, $pickupBranchId = null) {
-        if (!$pickupBranchId) $pickupBranchId = $this->orgId;
+    public function placeLocalHold($patronId, $bibRecordId, $pickupBranchId, $origin = 2) {
+        $today = date('Y-m-d\TH:i:s');
+        $future = date('Y-m-d\TH:i:s', strtotime('+6 months'));
         
-        // First get patron ID
-        $patronResult = $this->getPatronByBarcode($patronBarcode);
-        if (!$patronResult['ok'] || !isset($patronResult['data']['PatronID'])) {
-            return ['ok' => false, 'error' => 'Patron not found'];
-        }
-        $patronId = $patronResult['data']['PatronID'];
-        
-        // Use workflow API to place hold
-        $workflowData = [
-            'WorkflowRequestType' => 5, // PlaceHoldRequest
-            'TxnBranchID' => (int)$this->orgId,
-            'TxnUserID' => 1,
-            'TxnWorkstationID' => (int)$this->workstationId,
-            'RequestData' => [
-                'PatronID' => (int)$patronId,
-                'BibliographicRecordID' => (int)$bibRecordId,
-                'PickupBranchID' => (int)$pickupBranchId,
-                'Origin' => 2,
-                'ItemLevelHold' => false
-            ],
-            'WorkflowReplies' => null
+        $body = [
+            'ProcedureStep' => 1, // Start
+            'PatronID' => (int)$patronId,
+            'PickupBranchID' => (int)$pickupBranchId,
+            'Origin' => (int)$origin,
+            'ActivationDate' => $today,
+            'ExpirationDate' => $future,
+            'BibliographicRecordID' => (int)$bibRecordId
         ];
-
         
-        $path = "polaris/{$this->orgId}/{$this->workstationId}/workflow";
-        $result = $this->apiRequest('POST', $path, json_encode($workflowData));
+        $maxAttempts = 10;
+        $attempts = 0;
         
-        // Handle workflow prompts if needed
-        if ($result['ok'] && isset($result['data']['WorkflowStatus'])) {
-            $status = $result['data']['WorkflowStatus'];
+        while ($attempts < $maxAttempts) {
+            $attempts++;
             
-            // -3 = InputRequired, need to reply
-            if ($status == -3 && isset($result['data']['WorkflowRequestGuid'])) {
-                // Auto-continue for most prompts
-                $guid = $result['data']['WorkflowRequestGuid'];
-                $promptId = $result['data']['Prompt']['WorkflowPromptID'] ?? 0;
-                
-                $replyData = [
-                    'WorkflowPromptID' => $promptId,
-                    'WorkflowPromptResult' => 5, // Continue
-                    'ReplyValue' => null,
-                    'ReplyExtension' => null
+            $response = $this->apiRequest(
+                'POST', 
+                'holds?bulkmode=false&isORSStaffNoteManuallySupplied=false', 
+                json_encode($body)
+            );
+            
+            // Check for API-level errors
+            if (!$response['ok']) {
+                return [
+                    'ok' => false,
+                    'error' => 'API request failed',
+                    'details' => $response
                 ];
-                
-                $replyPath = "polaris/{$this->orgId}/{$this->workstationId}/workflow/{$guid}";
-                $result = $this->apiRequest('PUT', $replyPath, json_encode($replyData));
             }
             
-            // 1 = CompletedSuccessfully
-            if (isset($result['data']['WorkflowStatus']) && $result['data']['WorkflowStatus'] == 1) {
-                return ['ok' => true, 'data' => $result['data']];
+            // Check if we have valid response data
+            if (!isset($response['data']) || !is_array($response['data'])) {
+                return [
+                    'ok' => false,
+                    'error' => 'Invalid response from API',
+                    'details' => $response
+                ];
             }
+            
+            $data = $response['data'];
+            
+            // Check if hold was successfully placed
+            if (isset($data['Success']) && $data['Success'] === true) {
+                return [
+                    'ok' => true,
+                    'data' => $data
+                ];
+            }
+            
+            // Check if we need to continue the conversation
+            if (isset($data['PAPIProcedureStep'])) {
+                $step = $data['PAPIProcedureStep'];
+                
+                // Handle different procedure steps
+                switch ($step) {
+                    case 2:  // Patron blocks - continue anyway
+                    case 20: // Title not holdable - try to bypass
+                    case 21: // Duplicate holds - continue anyway
+                    case 22: // Max holds reached - try to bypass
+                    case 32: // Material type limit - try to bypass
+                        $body = [
+                            'ProcedureStep' => $step,
+                            'Answer' => 1, // Yes/Continue
+                            'PatronID' => (int)$patronId,
+                            'PickupBranchID' => (int)$pickupBranchId,
+                            'Origin' => (int)$origin,
+                            'ActivationDate' => $today,
+                            'ExpirationDate' => $future,
+                            'BibliographicRecordID' => (int)$bibRecordId
+                        ];
+                        continue 2; // Continue the while loop
+                        
+                    case 25: // Select designation
+                    case 26: // Select volume
+                        // If we have options, select the first one
+                        if (isset($data['DesignationsOrVolumes']) && !empty($data['DesignationsOrVolumes'])) {
+                            $body = [
+                                'ProcedureStep' => $step,
+                                'Answer' => 1,
+                                'PatronID' => (int)$patronId,
+                                'PickupBranchID' => (int)$pickupBranchId,
+                                'Origin' => (int)$origin,
+                                'ActivationDate' => $today,
+                                'ExpirationDate' => $future,
+                                'BibliographicRecordID' => (int)$bibRecordId,
+                                ($step == 25 ? 'Designation' : 'VolumeNumber') => $data['DesignationsOrVolumes'][0]
+                            ];
+                            continue 2;
+                        }
+                        break;
+                        
+                    case 27: // Item vs serial
+                    case 28: // Promote to bib level
+                        $body = [
+                            'ProcedureStep' => $step,
+                            'Answer' => 1, // Yes
+                            'PatronID' => (int)$patronId,
+                            'PickupBranchID' => (int)$pickupBranchId,
+                            'Origin' => (int)$origin,
+                            'ActivationDate' => $today,
+                            'ExpirationDate' => $future,
+                            'BibliographicRecordID' => (int)$bibRecordId
+                        ];
+                        continue 2;
+                }
+            }
+            
+            // If we get here, we couldn't handle the response automatically
+            return [
+                'ok' => false,
+                'data' => $data
+            ];
         }
         
-        return $result;
+        // Max attempts reached
+        return [
+            'ok' => false,
+            'error' => 'Maximum conversation attempts reached',
+            'details' => $response
+        ];
     }
     
     /**
@@ -227,46 +293,5 @@ class PolarisAPI {
             'data' => $data,
             'raw' => $responseBody
         ];
-    }
-    public function placeLocalHold($patronId, $bibRecordId, $pickupBranchId, $origin = 2) {
-        $url = "{$this->baseUrl}/api/v1/{$this->langCode}/{$this->siteId}/holds?bulkmode=false&isORSStaffNoteManuallySupplied=false";
-        
-        $today = date('Y-m-d\TH:i:s');
-        $future = date('Y-m-d\TH:i:s', strtotime('+1 month'));
-        
-        $body = [
-            'ProcedureStep' => 1,
-            'PatronID' => (int)$patronId,
-            'PickupBranchID' => (int)$pickupBranchId,
-            'Origin' => (int)$origin,
-            'ActivationDate' => $today,
-            'ExpirationDate' => $future,
-            'BibliographicRecordID' => (int)$bibRecordId
-        ];
-        
-        $response = $this->apiRequest('POST', 'holds?bulkmode=false&isORSStaffNoteManuallySupplied=false', json_encode($body));
-
-        if (!isset($response['data']) || !is_array($response['data'])) {
-            return [
-                'ok' => false,
-                'status' => $response['status'] ?? 500,
-                'data' => null,
-                'raw' => $response['raw'] ?? '',
-                'error' => 'No data returned from API'
-            ];
-        }
-        // Check for follow-up steps automatically
-        while (!$response['data']['Success'] && isset($response['data']['PAPIProcedureStep'])) {
-            $step = $response['data']['PAPIProcedureStep'];
-            $response = $this->apiRequest('POST', 'holds?bulkmode=false&isORSStaffNoteManuallySupplied=false', json_encode([
-                'ProcedureStep' => $step,
-                'Answer' => 1, // automatically continue
-                'PatronID' => (int)$patronId,
-                'PickupBranchID' => (int)$pickupBranchId,
-                'Origin' => (int)$origin
-            ]));
-        }
-        
-        return $response;
     }
 }
