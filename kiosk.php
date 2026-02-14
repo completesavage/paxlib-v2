@@ -752,6 +752,10 @@ async function loadStatuses() {
 
 // Update movie availability from current status cache
 function updateMovieAvailability() {
+  console.log('Updating movie availability...');
+  console.log('movieStatuses type:', typeof movieStatuses, 'is array:', Array.isArray(movieStatuses));
+  console.log('movieStatuses keys sample:', Object.keys(movieStatuses).slice(0, 5));
+  
   let availableCount = 0;
   movies.forEach(m => {
     if (movieStatuses[m.barcode]) {
