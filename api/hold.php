@@ -25,7 +25,23 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// Try to load polaris.php
+if (!file_exists(__DIR__ . '/polaris.php')) {
+    error_log("ERROR: polaris.php not found at " . __DIR__ . '/polaris.php');
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'Configuration error: polaris.php not found']);
+    exit;
+}
+
 require_once __DIR__ . '/polaris.php';
+
+// Check if the class exists
+if (!class_exists('PolarisAPI')) {
+    error_log("ERROR: PolarisAPI class not found");
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'Configuration error: PolarisAPI class not found']);
+    exit;
+}
 
 // Get and log the raw input
 $rawInput = file_get_contents('php://input');
