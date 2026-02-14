@@ -816,6 +816,12 @@ async function requestMovie(type) {
     
     if (type === 'hold' && currentMovie.bibRecordId) {
       try {
+        console.log('Placing hold with data:', {
+          patronBarcode: currentUser.barcode,
+          bibRecordId: currentMovie.bibRecordId,
+          itemBarcode: currentMovie.barcode
+        });
+        
         const holdRes = await fetch('api/hold.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -826,7 +832,22 @@ async function requestMovie(type) {
           })
         });
         
-        const holdData = await holdRes.json();
+        console.log('Hold response status:', holdRes.status, holdRes.statusText);
+        
+        // Get response text first to see what we're actually getting
+        const responseText = await holdRes.text();
+        console.log('Hold response text:', responseText);
+        
+        let holdData;
+        try {
+          holdData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Failed to parse response as JSON:', parseError);
+          toast('Hold system error (invalid response)', 'error');
+          return;
+        }
+        
+        console.log('Hold response data:', holdData);
         
         if (!holdRes.ok || !holdData.ok) {
           console.error('Hold placement failed:', holdData);
