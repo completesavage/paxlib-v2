@@ -58,7 +58,7 @@ try {
         echo json_encode(['ok'=>false,'error'=>'Patron not found','details'=>$patronResult]);
         exit;
     }
-    $patronId = $patronResult['data']['PatronID'];
+    $patronId = $patronResult['data']['PatronID'] ?? null;
 
     // Default pickup branch
     $pickupBranchId = 699; // Replace with your branch ID if different
