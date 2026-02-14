@@ -27,6 +27,7 @@ $input = json_decode(file_get_contents('php://input'), true);
 $patronBarcode = $input['patronBarcode'] ?? null;
 $bibRecordId   = $input['bibRecordId'] ?? null;
 $itemBarcode   = $input['itemBarcode'] ?? null;
+$pickupBranchId = 699; // Replace with your branch ID
 
 if (empty($patronBarcode)) {
     http_response_code(400);
@@ -60,6 +61,14 @@ try {
             exit;
         }
     }
+    // Lookup patron ID from barcode
+    $patronResult = $api->getPatronByBarcode($patronBarcode);
+    if (!$patronResult['ok'] || !isset($patronResult['data']['PatronID'])) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Patron not found']);
+        exit;
+    }
+    $patronId = $patronResult['data']['PatronID'];
 
     // Place the hold
     $result = $api->placeLocalHold($patronId, $bibRecordId, $pickupBranchId);
