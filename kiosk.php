@@ -816,7 +816,7 @@ async function requestMovie(type) {
     
     if (type === 'hold' && currentMovie.bibRecordId) {
       try {
-        await fetch('api/hold.php', {
+        const holdRes = await fetch('api/hold.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -825,8 +825,20 @@ async function requestMovie(type) {
             itemBarcode: currentMovie.barcode
           })
         });
+        
+        const holdData = await holdRes.json();
+        
+        if (!holdRes.ok || !holdData.ok) {
+          console.error('Hold placement failed:', holdData);
+          toast('Hold failed: ' + (holdData.error || 'Unknown error'), 'error');
+          return;
+        }
+        
+        console.log('Hold placed successfully:', holdData);
       } catch (e) {
-        console.warn('Polaris hold failed:', e);
+        console.error('Polaris hold error:', e);
+        toast('Hold system unavailable', 'error');
+        return;
       }
     }
     
