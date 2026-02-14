@@ -115,41 +115,30 @@ class PolarisAPI {
                 $path = "polaris/{$this->orgId}/{$this->workstationId}/bibliographicrecords/{$bibId}/availability?nofilter=true";
                 $result = $this->apiRequest('GET', $path);
                 
-                error_log("Bib $bibId availability result: " . print_r($result, true));
-                
                 if ($result['ok'] && isset($result['data']['Details'])) {
-                    // Log all branches we got
-                    error_log("Bib $bibId has " . count($result['data']['Details']) . " branch details");
-                    foreach ($result['data']['Details'] as $branch) {
-                        error_log("Branch: " . $branch['BranchAbbreviation'] . " / " . $branch['BranchName'] . " - Available: " . $branch['AvailableCount'] . "/" . $branch['TotalCount']);
+                    // Log first bib record details to see what branches exist
+                    if ($chunkIndex == 0 && $bibId == $bibIds[0]) {
+                        error_log("First bib record details: " . print_r($result['data']['Details'], true));
                     }
                     
-                    // Find availability for our branch
-                    $availableCount = 0;
+                    // Sum up ALL branches instead of looking for specific one
+                    $totalAvailable = 0;
                     $totalCount = 0;
-                    $branchFound = false;
                     
                     foreach ($result['data']['Details'] as $branch) {
-                        if ($branch['BranchAbbreviation'] == 'PXN' || $branch['BranchName'] == 'Paxton Carnegie Library') {
-                            $availableCount = $branch['AvailableCount'];
-                            $totalCount = $branch['TotalCount'];
-                            $branchFound = true;
-                            error_log("Found our branch! Available: $availableCount / Total: $totalCount");
-                            break;
-                        }
+                        $totalAvailable += $branch['AvailableCount'];
+                        $totalCount += $branch['TotalCount'];
                     }
                     
-                    if (!$branchFound) {
-                        error_log("WARNING: Our branch not found in results for bib $bibId");
-                    }
+                    error_log("Bib $bibId: Available $totalAvailable / Total $totalCount across all branches");
                     
                     // Apply availability to all items in this bib group
                     foreach ($bibGroups[$bibId] as $barcode) {
                         $results[$barcode] = [
-                            'available' => $availableCount > 0,
-                            'availableCount' => $availableCount,
+                            'available' => $totalAvailable > 0,
+                            'availableCount' => $totalAvailable,
                             'totalCount' => $totalCount,
-                            'status' => $availableCount > 0 ? 'Available' : 'Checked Out'
+                            'status' => $totalAvailable > 0 ? 'Available' : 'Checked Out'
                         ];
                     }
                 } else {
