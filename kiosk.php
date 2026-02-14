@@ -707,6 +707,7 @@ async function init() {
   loadStatuses(); // Load in background, don't wait
   renderAll();
   setupEvents();
+  startAutoRefresh(); // Start 10-minute refresh timer
 }
 
 // Load from cached movies API
@@ -727,44 +728,32 @@ async function loadMovies() {
 
 // Load availability statuses for all movies
 async function loadStatuses() {
-  console.log('Loading availability statuses...');
-  console.log('Total movies to check:', movies.length);
-  
-  // Check how many movies have bibRecordId
-  const moviesWithBibId = movies.filter(m => m.bibRecordId);
-  console.log('Movies with bibRecordId:', moviesWithBibId.length);
-  console.log('Movies without bibRecordId:', movies.length - moviesWithBibId.length);
+  console.log('Loading availability from cache...');
   
   try {
-    console.log('Fetching availability for all movies...');
     const res = await fetch('api/bulk-status.php?all=true');
-    console.log('Bulk status response status:', res.status);
     
     if (!res.ok) {
-      console.error('Response not OK:', res.status, res.statusText);
+      console.error('Response not OK:', res.status);
       return;
     }
     
-    const responseText = await res.text();
-    console.log('Response received, length:', responseText.length);
-    
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      console.error('Failed to parse response as JSON:', e);
-      console.error('First 500 chars:', responseText.substring(0, 500));
-      return;
-    }
-    
-    console.log('Parsed response:', data);
+    const data = await res.json();
+    console.log('Cache response:', data);
     
     if (data.ok) {
       movieStatuses = data.statuses;
       statusesLoaded = true;
-      console.log(`Loaded ${data.checked} item statuses`);
       
-      // Update movie objects with availability
+      console.log(`Loaded ${data.checked} statuses`);
+      if (data.cached) {
+        console.log(`From cache (age: ${data.cacheAge}s, updated: ${data.lastUpdated || 'unknown'})`);
+      }
+      if (data.refreshing) {
+        console.log('Background refresh in progress...');
+      }
+      
+      // Update movie objects
       let availableCount = 0;
       movies.forEach(m => {
         if (movieStatuses[m.barcode]) {
@@ -774,17 +763,22 @@ async function loadStatuses() {
         }
       });
       
-      console.log('Total available movies:', availableCount);
-      console.log('Total unavailable movies:', movies.length - availableCount);
+      console.log(`${availableCount} available out of ${movies.length} movies`);
       
       updateFilterCounts();
-      renderAll(); // Re-render with availability info
-    } else {
-      console.error('API returned error:', data);
+      renderAll();
     }
   } catch (e) {
     console.error('Failed to load statuses:', e);
   }
+}
+
+// Auto-refresh availability every 10 minutes
+function startAutoRefresh() {
+  setInterval(() => {
+    console.log('Auto-refreshing availability...');
+    loadStatuses();
+  }, 10 * 60 * 1000); // 10 minutes
 }
 
 // Set filter
