@@ -108,8 +108,8 @@ class PolarisAPI {
         $today = date('Y-m-d\TH:i:s');
         $future = date('Y-m-d\TH:i:s', strtotime('+6 months'));
         
-        $body = [
-            'ProcedureStep' => 1, // Start
+        // Build base body with all required fields
+        $baseBody = [
             'PatronID' => (int)$patronId,
             'PickupBranchID' => (int)$pickupBranchId,
             'Origin' => (int)$origin,
@@ -118,11 +118,16 @@ class PolarisAPI {
             'BibliographicRecordID' => (int)$bibRecordId
         ];
         
+        $body = array_merge($baseBody, ['ProcedureStep' => 1]);
+        
         $maxAttempts = 10;
         $attempts = 0;
         
+        error_log("Starting hold placement loop");
+        
         while ($attempts < $maxAttempts) {
             $attempts++;
+            error_log("Hold attempt $attempts with body: " . json_encode($body));
             
             $response = $this->apiRequest(
                 'POST', 
@@ -130,17 +135,22 @@ class PolarisAPI {
                 json_encode($body)
             );
             
+            error_log("Hold response: " . json_encode($response));
+            
             // Check for API-level errors
             if (!$response['ok']) {
+                error_log("API request failed with status: " . ($response['status'] ?? 'unknown'));
                 return [
                     'ok' => false,
                     'error' => 'API request failed',
+                    'status' => $response['status'] ?? null,
                     'details' => $response
                 ];
             }
             
             // Check if we have valid response data
             if (!isset($response['data']) || !is_array($response['data'])) {
+                error_log("Invalid response data structure");
                 return [
                     'ok' => false,
                     'error' => 'Invalid response from API',
@@ -152,6 +162,7 @@ class PolarisAPI {
             
             // Check if hold was successfully placed
             if (isset($data['Success']) && $data['Success'] === true) {
+                error_log("Hold placed successfully! HoldRequestID: " . ($data['HoldRequestID'] ?? 'unknown'));
                 return [
                     'ok' => true,
                     'data' => $data
@@ -161,6 +172,10 @@ class PolarisAPI {
             // Check if we need to continue the conversation
             if (isset($data['PAPIProcedureStep'])) {
                 $step = $data['PAPIProcedureStep'];
+                error_log("Procedure step $step encountered: " . ($data['Message'] ?? 'no message'));
+                
+                // Rebuild body for next iteration, always including all base fields
+                $body = array_merge($baseBody, ['ProcedureStep' => $step]);
                 
                 // Handle different procedure steps
                 switch ($step) {
@@ -169,65 +184,45 @@ class PolarisAPI {
                     case 21: // Duplicate holds - continue anyway
                     case 22: // Max holds reached - try to bypass
                     case 32: // Material type limit - try to bypass
-                        $body = [
-                            'ProcedureStep' => $step,
-                            'Answer' => 1, // Yes/Continue
-                            'PatronID' => (int)$patronId,
-                            'PickupBranchID' => (int)$pickupBranchId,
-                            'Origin' => (int)$origin,
-                            'ActivationDate' => $today,
-                            'ExpirationDate' => $future,
-                            'BibliographicRecordID' => (int)$bibRecordId
-                        ];
+                        $body['Answer'] = 1; // Yes/Continue
+                        error_log("Bypassing step $step with Answer=1");
                         continue 2; // Continue the while loop
                         
                     case 25: // Select designation
                     case 26: // Select volume
                         // If we have options, select the first one
                         if (isset($data['DesignationsOrVolumes']) && !empty($data['DesignationsOrVolumes'])) {
-                            $body = [
-                                'ProcedureStep' => $step,
-                                'Answer' => 1,
-                                'PatronID' => (int)$patronId,
-                                'PickupBranchID' => (int)$pickupBranchId,
-                                'Origin' => (int)$origin,
-                                'ActivationDate' => $today,
-                                'ExpirationDate' => $future,
-                                'BibliographicRecordID' => (int)$bibRecordId,
-                                ($step == 25 ? 'Designation' : 'VolumeNumber') => $data['DesignationsOrVolumes'][0]
-                            ];
+                            $body['Answer'] = 1;
+                            $fieldName = ($step == 25 ? 'Designation' : 'VolumeNumber');
+                            $body[$fieldName] = $data['DesignationsOrVolumes'][0];
+                            error_log("Selected $fieldName: " . $body[$fieldName]);
                             continue 2;
                         }
                         break;
                         
                     case 27: // Item vs serial
                     case 28: // Promote to bib level
-                        $body = [
-                            'ProcedureStep' => $step,
-                            'Answer' => 1, // Yes
-                            'PatronID' => (int)$patronId,
-                            'PickupBranchID' => (int)$pickupBranchId,
-                            'Origin' => (int)$origin,
-                            'ActivationDate' => $today,
-                            'ExpirationDate' => $future,
-                            'BibliographicRecordID' => (int)$bibRecordId
-                        ];
+                        $body['Answer'] = 1; // Yes
+                        error_log("Answering Yes to step $step");
                         continue 2;
                 }
             }
             
             // If we get here, we couldn't handle the response automatically
+            error_log("Could not automatically handle response, returning error");
             return [
                 'ok' => false,
-                'data' => $data
+                'data' => $data,
+                'message' => $data['Message'] ?? 'Unknown error'
             ];
         }
         
         // Max attempts reached
+        error_log("Max attempts ($maxAttempts) reached");
         return [
             'ok' => false,
             'error' => 'Maximum conversation attempts reached',
-            'details' => $response
+            'details' => $response ?? null
         ];
     }
     
