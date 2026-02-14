@@ -934,9 +934,18 @@ function renderHold(hold) {
   
   const canCancel = ['Active', 'Pending', 'Shipped', 'Held'].includes(hold.RequestStatusDescription);
   
+  // Build cover URL from the movies array if we have the barcode
+  let coverSrc = NO_COVER;
+  if (hold.ItemBarcode) {
+    const movie = movies.find(m => m.barcode === hold.ItemBarcode);
+    if (movie && movie.cover) {
+      coverSrc = movie.cover;
+    }
+  }
+  
   return `
     <div class="hold-card">
-      <img src="${hold.Cover || 'assets/placeholder.jpg'}" class="hold-poster" alt="${esc(hold.BrowseTitle)}">
+      <img src="${coverSrc}" class="hold-poster" onerror="this.src='${NO_COVER}'" alt="${esc(hold.BrowseTitle)}">
       <div class="hold-details">
         <div class="hold-title">${esc(hold.BrowseTitle)}</div>
         <div class="hold-meta">📍 Pickup: ${esc(hold.PickupBranchName)}</div>
@@ -958,6 +967,8 @@ async function cancelHold(holdRequestId) {
   if (!confirm('Are you sure you want to cancel this hold?')) return;
   
   try {
+    console.log('Cancelling hold:', holdRequestId, 'for patron:', currentUser.barcode);
+    
     const res = await fetch('api/cancel-hold.php', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -967,13 +978,27 @@ async function cancelHold(holdRequestId) {
       })
     });
     
-    const data = await res.json();
+    console.log('Cancel response status:', res.status);
+    
+    const responseText = await res.text();
+    console.log('Cancel response text:', responseText);
+    
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse cancel response:', e);
+      toast('Cancel failed (invalid response)', 'error');
+      return;
+    }
+    
+    console.log('Cancel response data:', data);
     
     if (data.ok) {
       toast('Hold cancelled successfully', 'success');
       loadHolds(); // Reload holds
     } else {
-      toast('Failed to cancel hold: ' + (data.error || 'Unknown error'), 'error');
+      toast('Failed to cancel: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (e) {
     console.error('Cancel hold error:', e);
