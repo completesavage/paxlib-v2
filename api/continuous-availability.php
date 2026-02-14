@@ -64,23 +64,57 @@ try {
     $api = new PolarisAPI();
     $batchStatuses = $api->bulkItemAvailability($batch, 5);
     
+    error_log("Batch check result - ok: " . ($batchStatuses['ok'] ? 'true' : 'false'));
     if ($batchStatuses['ok']) {
-        // Merge with existing cache - ensure it's an associative array
-        if (!isset($cache['statuses']) || !is_array($cache['statuses'])) {
+        error_log("Batch data type: " . gettype($batchStatuses['data']));
+        error_log("Batch data count: " . count($batchStatuses['data']));
+        if (!empty($batchStatuses['data'])) {
+            error_log("First 3 barcodes: " . json_encode(array_slice(array_keys($batchStatuses['data']), 0, 3)));
+        }
+    }
+    
+    if ($batchStatuses['ok']) {
+        // Get the batch data and ensure it's an associative array
+        $batchData = $batchStatuses['data'] ?? [];
+        
+        // Check if it's a sequential numeric array (wrong format)
+        if (is_array($batchData) && !empty($batchData) && array_keys($batchData) === range(0, count($batchData) - 1)) {
+            error_log("WARNING: Batch data is a numeric array! Converting to empty.");
+            $batchData = [];
+        }
+        
+        // Initialize cache statuses if needed
+        if (!isset($cache['statuses'])) {
             $cache['statuses'] = [];
         }
-        $cache['statuses'] = array_merge($cache['statuses'], $batchStatuses['data']);
+        
+        // Convert empty array to associative array before merge
+        // This ensures json_encode treats it as an object
+        if (is_array($cache['statuses']) && empty($cache['statuses'])) {
+            // Start fresh with the batch data
+            $cache['statuses'] = $batchData;
+        } else {
+            // Merge with existing data
+            $cache['statuses'] = array_merge($cache['statuses'], $batchData);
+        }
+        
         $cache['lastUpdated'] = date('Y-m-d H:i:s');
         $cache['timestamp'] = time();
         
-        // Ensure statuses is encoded as object, not array
-        // If empty, use stdClass; if not empty, ensure it's an associative array (which encodes as object)
+        // If still empty after merge (shouldn't happen), use empty object
         if (empty($cache['statuses'])) {
             $cache['statuses'] = new stdClass();
         }
         
+        // Debug: Log what we're about to save
+        error_log("About to save cache with " . count($cache['statuses']) . " statuses");
+        error_log("First 3 keys: " . json_encode(array_slice(array_keys($cache['statuses']), 0, 3)));
+        error_log("Is array: " . (is_array($cache['statuses']) ? 'YES' : 'NO'));
+        
         // Save cache
-        file_put_contents($cacheFile, json_encode($cache));
+        $jsonData = json_encode($cache);
+        error_log("JSON first 200 chars: " . substr($jsonData, 0, 200));
+        file_put_contents($cacheFile, $jsonData);
         
         // Update progress
         $progress['offset'] = $currentOffset + $batchSize;
