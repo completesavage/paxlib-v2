@@ -62,16 +62,21 @@ try {
     }
 
     // Place the hold
-    $result = $api->placeHold($patronBarcode, $bibRecordId);
+    $result = $api->placeLocalHold($patronId, $bibRecordId, $pickupBranchId);
 
-    if ($result['ok']) {
+    if ($result['ok'] && isset($result['data']['Success']) && $result['data']['Success']) {
         echo json_encode([
             'ok' => true,
             'message' => 'Hold placed successfully',
-            'data' => $result['data'] ?? null
+            'HoldRequestID' => $result['data']['HoldRequestID']
         ]);
-        exit;
+    } else {
+        echo json_encode([
+            'ok' => false,
+            'error' => $result['data']['Message'] ?? 'Unknown error'
+        ]);
     }
+
 
     // If failed, extract best possible message
     $errorMsg = 'Failed to place hold';
