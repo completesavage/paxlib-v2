@@ -57,7 +57,7 @@ try {
                 
                 echo json_encode([
                     'ok' => true,
-                    'statuses' => [],
+                    'statuses' => new stdClass(),
                     'checked' => 0,
                     'timestamp' => time(),
                     'cached' => false,
