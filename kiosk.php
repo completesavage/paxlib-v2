@@ -1006,18 +1006,19 @@ async function openMovie(barcode) {
       $('#modalLocation').textContent = m.location || 'DVD Section';
       
       const status = m.status || 'Unknown';
-      const isAvailable = status.toLowerCase().includes('in') && 
-                         !status.toLowerCase().includes('transit') &&
-                         !status.toLowerCase().includes('hold');
+      // Use the 'available' boolean from API instead of parsing status string
+      const isAvailable = m.available === true;
       
       $('#modalStatus').textContent = status;
       $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
       
       // Show appropriate buttons based on availability
       if (isAvailable) {
+        // Available: Show both Check Out Now and Place Hold
         $('#btnRequestNow').style.display = 'block';
         $('#btnPlaceHold').style.display = 'block';
       } else {
+        // Not available: Only show Place Hold
         $('#btnRequestNow').style.display = 'none';
         $('#btnPlaceHold').style.display = 'block';
       }
