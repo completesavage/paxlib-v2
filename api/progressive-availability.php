@@ -47,7 +47,7 @@ try {
     if (empty($batch)) {
         echo json_encode([
             'ok' => true,
-            'statuses' => [],
+            'statuses' => new stdClass(), // Empty object, not array
             'offset' => $offset,
             'limit' => $limit,
             'total' => $totalMovies,
