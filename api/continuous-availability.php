@@ -94,14 +94,16 @@ try {
             $cache['statuses'] = [];
         }
         
-        // Convert empty array to associative array before merge
-        // This ensures json_encode treats it as an object
+        // Use + operator instead of array_merge to preserve integer keys
+        // array_merge re-indexes integer keys, but + preserves them
         if (is_array($cache['statuses']) && empty($cache['statuses'])) {
             // Start fresh with the batch data
             $cache['statuses'] = $batchData;
         } else {
-            // Merge with existing data
-            $cache['statuses'] = array_merge($cache['statuses'], $batchData);
+            // Merge with existing data - USE + NOT array_merge!
+            // array_merge([31783000578595 => ...]) becomes [0 => ...]
+            // $a + $b preserves all keys including integer keys
+            $cache['statuses'] = $cache['statuses'] + $batchData;
         }
         
         $cache['lastUpdated'] = date('Y-m-d H:i:s');
