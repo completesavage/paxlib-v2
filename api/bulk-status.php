@@ -45,13 +45,14 @@ try {
         $cacheAge = time() - filemtime($cacheFile);
         $cachedData = json_decode(file_get_contents($cacheFile), true);
         
-        // Check if statuses is an array (wrong format) and convert to object
-        if (isset($cachedData['statuses']) && is_array($cachedData['statuses'])) {
-            // Check if it's a numeric array (wrong) vs associative array (correct)
-            $firstKey = array_key_first($cachedData['statuses']);
-            if (is_int($firstKey)) {
-                // Wrong format - it's a numeric array, not barcode-keyed object
-                error_log("WARNING: Cache has wrong format (numeric array), needs rebuild");
+        // Check if statuses is a sequential numeric array (wrong format)
+        // Barcodes stored as integers are OK, but [0,1,2,3] is wrong
+        if (isset($cachedData['statuses']) && is_array($cachedData['statuses']) && !empty($cachedData['statuses'])) {
+            $keys = array_keys($cachedData['statuses']);
+            // Check if it's a sequential array starting at 0
+            if ($keys === range(0, count($keys) - 1)) {
+                // Wrong format - it's a sequential numeric array [0,1,2,3...]
+                error_log("WARNING: Cache has wrong format (sequential numeric array), needs rebuild");
                 // Delete bad cache and start fresh
                 unlink($cacheFile);
                 
