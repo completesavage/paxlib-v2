@@ -37,55 +37,81 @@ if (!$all && empty($barcodes)) {
 }
 
 try {
-    $api = new PolarisAPI();
+    $cacheFile = __DIR__ . '/../data/availability_cache.json';
+    $cacheMaxAge = 600; // 10 minutes
     
-    // If "all" is requested, load from movies cache
-    if ($all) {
-        $moviesFile = __DIR__ . '/../data/movies_cache.json';
-        if (!file_exists($moviesFile)) {
-            http_response_code(404);
-            echo json_encode(['ok' => false, 'error' => 'Movies cache not found']);
+    // Always try to use cache first
+    if (file_exists($cacheFile)) {
+        $cacheAge = time() - filemtime($cacheFile);
+        $cachedData = json_decode(file_get_contents($cacheFile), true);
+        
+        error_log("Cache found, age: {$cacheAge}s, complete: " . ($cachedData['complete'] ? 'yes' : 'no'));
+        
+        // If cache is less than 10 minutes old, use it
+        if ($cacheAge < $cacheMaxAge) {
+            echo json_encode([
+                'ok' => true,
+                'statuses' => $cachedData['statuses'],
+                'checked' => count($cachedData['statuses']),
+                'timestamp' => $cachedData['timestamp'],
+                'cached' => true,
+                'cacheAge' => $cacheAge,
+                'lastUpdated' => $cachedData['lastUpdated'] ?? null
+            ]);
+            exit;
+        } else {
+            // Cache is stale, trigger background refresh but return stale data
+            error_log("Cache is stale, returning old data and triggering refresh");
+            
+            // Trigger refresh in background (non-blocking)
+            // Use file_get_contents with async context
+            $opts = [
+                'http' => [
+                    'method' => 'GET',
+                    'timeout' => 1, // Don't wait for response
+                    'ignore_errors' => true
+                ]
+            ];
+            $context = stream_context_create($opts);
+            @file_get_contents('http://' . $_SERVER['HTTP_HOST'] . '/api/refresh-availability.php', false, $context);
+            
+            echo json_encode([
+                'ok' => true,
+                'statuses' => $cachedData['statuses'],
+                'checked' => count($cachedData['statuses']),
+                'timestamp' => $cachedData['timestamp'],
+                'cached' => true,
+                'stale' => true,
+                'cacheAge' => $cacheAge,
+                'lastUpdated' => $cachedData['lastUpdated'] ?? null,
+                'refreshing' => true
+            ]);
             exit;
         }
-        
-        $moviesData = json_decode(file_get_contents($moviesFile), true);
-        
-        // Apply limit if specified (for testing)
-        if ($limit !== null && $limit > 0) {
-            $moviesData = array_slice($moviesData, 0, $limit);
-            error_log("Limited to first $limit movies for testing");
-        }
-        
-        error_log("Starting bulk availability check for " . count($moviesData) . " movies");
-        
-        // Use the new efficient bib availability method
-        $statuses = $api->bulkItemAvailability($moviesData);
-        
-        error_log("Completed bulk availability check");
-    } else {
-        // For specific barcodes, use the old method
-        error_log("Checking " . count($barcodes) . " specific barcodes");
-        $statuses = $api->bulkItemStatus($barcodes);
     }
     
-    if (!$statuses['ok']) {
-        error_log("Status check failed: " . print_r($statuses, true));
-        http_response_code(500);
-        echo json_encode([
-            'ok' => false,
-            'error' => 'Failed to check statuses',
-            'details' => $statuses
-        ]);
-        exit;
-    }
+    // No cache exists, return empty and trigger refresh
+    error_log("No cache found, triggering initial refresh");
     
-    error_log("Returning " . count($statuses['data']) . " status results");
+    // Trigger refresh
+    $opts = [
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 1,
+            'ignore_errors' => true
+        ]
+    ];
+    $context = stream_context_create($opts);
+    @file_get_contents('http://' . $_SERVER['HTTP_HOST'] . '/api/refresh-availability.php', false, $context);
     
     echo json_encode([
         'ok' => true,
-        'statuses' => $statuses['data'],
-        'checked' => count($statuses['data']),
-        'timestamp' => time()
+        'statuses' => [],
+        'checked' => 0,
+        'timestamp' => time(),
+        'cached' => false,
+        'refreshing' => true,
+        'message' => 'Initial refresh started'
     ]);
     
 } catch (Exception $e) {
