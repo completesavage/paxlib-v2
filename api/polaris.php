@@ -98,6 +98,8 @@ class PolarisAPI {
                     $bibGroups[$bibId] = [];
                 }
                 $bibGroups[$bibId][] = $movie['barcode'];
+            } else {
+                error_log("Movie missing bibRecordId: " . ($movie['barcode'] ?? 'unknown'));
             }
         }
         
@@ -113,17 +115,32 @@ class PolarisAPI {
                 $path = "polaris/{$this->orgId}/{$this->workstationId}/bibliographicrecords/{$bibId}/availability?nofilter=true";
                 $result = $this->apiRequest('GET', $path);
                 
+                error_log("Bib $bibId availability result: " . print_r($result, true));
+                
                 if ($result['ok'] && isset($result['data']['Details'])) {
+                    // Log all branches we got
+                    error_log("Bib $bibId has " . count($result['data']['Details']) . " branch details");
+                    foreach ($result['data']['Details'] as $branch) {
+                        error_log("Branch: " . $branch['BranchAbbreviation'] . " / " . $branch['BranchName'] . " - Available: " . $branch['AvailableCount'] . "/" . $branch['TotalCount']);
+                    }
+                    
                     // Find availability for our branch
                     $availableCount = 0;
                     $totalCount = 0;
+                    $branchFound = false;
                     
                     foreach ($result['data']['Details'] as $branch) {
                         if ($branch['BranchAbbreviation'] == 'PXN' || $branch['BranchName'] == 'Paxton Carnegie Library') {
                             $availableCount = $branch['AvailableCount'];
                             $totalCount = $branch['TotalCount'];
+                            $branchFound = true;
+                            error_log("Found our branch! Available: $availableCount / Total: $totalCount");
                             break;
                         }
+                    }
+                    
+                    if (!$branchFound) {
+                        error_log("WARNING: Our branch not found in results for bib $bibId");
                     }
                     
                     // Apply availability to all items in this bib group
@@ -136,6 +153,7 @@ class PolarisAPI {
                         ];
                     }
                 } else {
+                    error_log("Failed to get bib availability for $bibId: " . ($result['error'] ?? 'unknown error'));
                     // If we can't get bib availability, mark as unknown
                     foreach ($bibGroups[$bibId] as $barcode) {
                         $results[$barcode] = [
