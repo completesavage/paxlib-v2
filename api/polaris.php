@@ -102,6 +102,72 @@ class PolarisAPI {
     }
     
     /**
+     * Get all holds for a patron
+     * Returns holds grouped by status
+     */
+    public function getPatronHolds($patronId) {
+        // Get holds in different statuses that are relevant to patrons
+        $statuses = [
+            3 => 'Active',      // Active in system
+            4 => 'Pending',     // Waiting to be filled
+            5 => 'Shipped',     // In transit
+            6 => 'Held',        // Ready for pickup
+            8 => 'Unclaimed',   // Was ready but not picked up
+            17 => 'Out'         // Checked out to patron
+        ];
+        
+        $allHolds = [];
+        
+        foreach ($statuses as $statusId => $statusName) {
+            // branchTypeId 1 = Requesting Patron Branch
+            $path = "polaris/{$this->orgId}/{$this->workstationId}/holdssummary/{$this->orgId}/1/{$statusId}";
+            $result = $this->apiRequest('GET', $path);
+            
+            if ($result['ok'] && isset($result['data']) && is_array($result['data'])) {
+                // Filter to only this patron's holds
+                foreach ($result['data'] as $hold) {
+                    if (isset($hold['PatronID']) && $hold['PatronID'] == $patronId) {
+                        $hold['StatusName'] = $statusName;
+                        $allHolds[] = $hold;
+                    }
+                }
+            }
+        }
+        
+        return [
+            'ok' => true,
+            'data' => $allHolds
+        ];
+    }
+    
+    /**
+     * Cancel a hold request
+     */
+    public function cancelHold($holdRequestId, $patronId = null) {
+        $path = "polaris/{$this->orgId}/{$this->workstationId}/holds/{$holdRequestId}?action=cancel&isstatuslistlimited=true";
+        
+        // Add patronId as query param if provided to verify ownership
+        if ($patronId !== null) {
+            $path .= "&patronId={$patronId}";
+        }
+        
+        $result = $this->apiRequest('PUT', $path);
+        
+        if ($result['ok']) {
+            return [
+                'ok' => true,
+                'data' => $result['data']
+            ];
+        } else {
+            return [
+                'ok' => false,
+                'error' => 'Failed to cancel hold',
+                'details' => $result
+            ];
+        }
+    }
+    
+    /**
      * Place a local hold request with automatic handling of conversation steps
      */
     public function placeLocalHold($patronId, $bibRecordId, $pickupBranchId, $origin = 2) {
