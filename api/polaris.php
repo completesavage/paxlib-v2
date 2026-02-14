@@ -121,18 +121,16 @@ class PolarisAPI {
             'TxnBranchID' => (int)$this->orgId,
             'TxnUserID' => 1,
             'TxnWorkstationID' => (int)$this->workstationId,
-            'RequestExtension' => [
-                'WorkflowRequestExtensionType' => 9, // HoldRequestData
-                'Data' => [
-                    'PatronID' => $patronId,
-                    'BibliographicRecordID' => (int)$bibRecordId,
-                    'PickupBranchID' => (int)$pickupBranchId,
-                    'Origin' => 2, // Staff
-                    'ItemLevelHold' => false
-                ]
+            'RequestData' => [
+                'PatronID' => (int)$patronId,
+                'BibliographicRecordID' => (int)$bibRecordId,
+                'PickupBranchID' => (int)$pickupBranchId,
+                'Origin' => 2,
+                'ItemLevelHold' => false
             ],
             'WorkflowReplies' => null
         ];
+
         
         $path = "polaris/{$this->orgId}/{$this->workstationId}/workflow";
         $result = $this->apiRequest('POST', $path, json_encode($workflowData));
