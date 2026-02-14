@@ -129,9 +129,11 @@ class PolarisAPI {
             $attempts++;
             error_log("Hold attempt $attempts with body: " . json_encode($body));
             
+            $path = "polaris/{$this->orgId}/{$this->workstationId}/holds?bulkmode=false&isORSStaffNoteManuallySupplied=false";
+            
             $response = $this->apiRequest(
                 'POST', 
-                'holds?bulkmode=false&isORSStaffNoteManuallySupplied=false', 
+                $path, 
                 json_encode($body)
             );
             
