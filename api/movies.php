@@ -177,58 +177,24 @@ if ($method === 'GET') {
             try {
                 $api = new PolarisAPI();
                 
-                // Use bib-level check if we have bibRecordId (most efficient)
-                if (!empty($movie['bibRecordId'])) {
-                    $bibId = $movie['bibRecordId'];
-                    $path = "polaris/699/3073/bibliographicrecords/{$bibId}/availability?nofilter=true";
-                    $result = $api->apiRequest('GET', $path);
-                    
-                    if ($result['ok'] && isset($result['data']['Details'])) {
-                        $totalAvailable = 0;
-                        $totalCount = 0;
-                        
-                        foreach ($result['data']['Details'] as $branch) {
-                            $totalAvailable += $branch['AvailableCount'];
-                            $totalCount += $branch['TotalCount'];
-                        }
-                        
-                        $movie['status'] = $totalAvailable > 0 ? 'Available' : 'Checked Out';
-                        $movie['available'] = $totalAvailable > 0;
-                        $movie['availableCount'] = $totalAvailable;
-                        $movie['totalCount'] = $totalCount;
-                    } else {
-                        // Bib check failed, try item-level
-                        $itemResult = $api->getItemByBarcode($barcode);
-                        
-                        if ($itemResult['ok'] && isset($itemResult['data'])) {
-                            $item = $itemResult['data'];
-                            $circStatus = $item['CirculationStatusID'] ?? 0;
-                            
-                            // CirculationStatusID: 1 = IN, 2 = OUT, others vary
-                            $movie['status'] = ($circStatus === 1) ? 'Available' : 'Checked Out';
-                            $movie['available'] = ($circStatus === 1);
-                        } else {
-                            $movie['status'] = 'Unknown';
-                        }
-                    }
+                // Use bulkItemAvailability with a single-item array
+                $result = $api->bulkItemAvailability([$movie], 1);
+                
+                if ($result['ok'] && isset($result['data'][$barcode])) {
+                    // Found in results
+                    $statusData = $result['data'][$barcode];
+                    $movie['status'] = $statusData['status'];
+                    $movie['available'] = $statusData['available'];
+                    $movie['availableCount'] = $statusData['availableCount'] ?? 0;
+                    $movie['totalCount'] = $statusData['totalCount'] ?? 0;
                 } else {
-                    // No bibRecordId, use item-level check
-                    $result = $api->getItemByBarcode($barcode);
-                    
-                    if ($result['ok'] && isset($result['data'])) {
-                        $item = $result['data'];
-                        $circStatus = $item['CirculationStatusID'] ?? 0;
-                        
-                        // CirculationStatusID: 1 = IN, 2 = OUT
-                        $movie['status'] = ($circStatus === 1) ? 'Available' : 'Checked Out';
-                        $movie['available'] = ($circStatus === 1);
-                    } else {
-                        $movie['status'] = 'Unknown';
-                    }
+                    // Not found or error
+                    error_log("bulkItemAvailability failed for $barcode: " . json_encode($result));
+                    $movie['status'] = 'Unknown';
                 }
             } catch (Exception $e) {
                 error_log("Error checking availability for $barcode: " . $e->getMessage());
-                $movie['status'] = 'Error: ' . $e->getMessage();
+                $movie['status'] = 'Error';
             }
         } else {
             $movie['status'] = 'API unavailable';
