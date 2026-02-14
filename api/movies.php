@@ -169,21 +169,76 @@ if ($method === 'GET') {
             exit;
         }
         
-        // Get availability from cache
-        $availCacheFile = __DIR__ . '/../data/availability_cache.json';
-        if (file_exists($availCacheFile)) {
-            $availCache = json_decode(file_get_contents($availCacheFile), true);
-            if (isset($availCache['statuses'][$barcode])) {
-                $statusData = $availCache['statuses'][$barcode];
-                $movie['status'] = $statusData['status'] ?? 'Available';
-                $movie['available'] = $statusData['available'] ?? false;
-                $movie['availableCount'] = $statusData['availableCount'] ?? 0;
-                $movie['totalCount'] = $statusData['totalCount'] ?? 0;
-            } else {
-                $movie['status'] = 'Checking...';
+        // ALWAYS check real-time availability from Polaris when movie is clicked
+        $movie['status'] = 'Checking...';
+        $movie['available'] = false;
+        
+        if (loadPolaris()) {
+            try {
+                $api = new PolarisAPI();
+                
+                // Use the efficient bib-level check if we have bibRecordId
+                if (!empty($movie['bibRecordId'])) {
+                    $path = "polaris/699/3073/bibliographicrecords/{$movie['bibRecordId']}/availability?nofilter=true";
+                    $result = $api->apiRequest('GET', $path);
+                    
+                    if ($result['ok'] && isset($result['data']['Details'])) {
+                        $totalAvailable = 0;
+                        $totalCount = 0;
+                        
+                        foreach ($result['data']['Details'] as $branch) {
+                            $totalAvailable += $branch['AvailableCount'];
+                            $totalCount += $branch['TotalCount'];
+                        }
+                        
+                        $movie['status'] = $totalAvailable > 0 ? 'Available' : 'Checked Out';
+                        $movie['available'] = $totalAvailable > 0;
+                        $movie['availableCount'] = $totalAvailable;
+                        $movie['totalCount'] = $totalCount;
+                    } else {
+                        // Fallback to item-level check
+                        $itemResult = $api->getItemByBarcode($barcode);
+                        
+                        if ($itemResult['ok'] && isset($itemResult['data'])) {
+                            $item = $itemResult['data'];
+                            $statusDesc = $item['ItemStatusDescription'] ?? 'Unknown';
+                            
+                            // Map Polaris status to user-friendly text
+                            $isAvailable = (stripos($statusDesc, 'in') !== false) && 
+                                          (stripos($statusDesc, 'transit') === false) &&
+                                          (stripos($statusDesc, 'hold') === false);
+                            
+                            $movie['status'] = $isAvailable ? 'Available' : 'Checked Out';
+                            $movie['available'] = $isAvailable;
+                        } else {
+                            $movie['status'] = 'Status unavailable';
+                        }
+                    }
+                } else {
+                    // No bibRecordId, use item-level check
+                    $result = $api->getItemByBarcode($barcode);
+                    
+                    if ($result['ok'] && isset($result['data'])) {
+                        $item = $result['data'];
+                        $statusDesc = $item['ItemStatusDescription'] ?? 'Unknown';
+                        
+                        // Map Polaris status to user-friendly text
+                        $isAvailable = (stripos($statusDesc, 'in') !== false) && 
+                                      (stripos($statusDesc, 'transit') === false) &&
+                                      (stripos($statusDesc, 'hold') === false);
+                        
+                        $movie['status'] = $isAvailable ? 'Available' : 'Checked Out';
+                        $movie['available'] = $isAvailable;
+                    } else {
+                        $movie['status'] = 'Status unavailable';
+                    }
+                }
+            } catch (Exception $e) {
+                error_log("Error checking availability for $barcode: " . $e->getMessage());
+                $movie['status'] = 'Error checking status';
             }
         } else {
-            $movie['status'] = 'Checking...';
+            $movie['status'] = 'Status check unavailable';
         }
         
         echo json_encode(['ok' => true, 'movie' => $movie]);
