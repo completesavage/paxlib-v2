@@ -83,6 +83,149 @@ class PolarisAPI {
     }
     
     /**
+     * Bulk check availability using bibliographic record API
+     * Much more efficient - checks entire bib record availability at once
+     */
+    public function bulkItemAvailability($movies, $batchSize = 50) {
+        $results = [];
+        
+        // Group movies by their bibRecordId
+        $bibGroups = [];
+        foreach ($movies as $movie) {
+            if (isset($movie['bibRecordId']) && $movie['bibRecordId']) {
+                $bibId = $movie['bibRecordId'];
+                if (!isset($bibGroups[$bibId])) {
+                    $bibGroups[$bibId] = [];
+                }
+                $bibGroups[$bibId][] = $movie['barcode'];
+            }
+        }
+        
+        error_log("Checking availability for " . count($bibGroups) . " bib records (covering " . count($movies) . " items)");
+        
+        $chunks = array_chunk(array_keys($bibGroups), $batchSize);
+        
+        foreach ($chunks as $chunkIndex => $bibIds) {
+            error_log("Processing batch " . ($chunkIndex + 1) . "/" . count($chunks));
+            
+            foreach ($bibIds as $bibId) {
+                // Get availability for this bib record
+                $path = "polaris/{$this->orgId}/{$this->workstationId}/bibliographicrecords/{$bibId}/availability?nofilter=true";
+                $result = $this->apiRequest('GET', $path);
+                
+                if ($result['ok'] && isset($result['data']['Details'])) {
+                    // Find availability for our branch
+                    $availableCount = 0;
+                    $totalCount = 0;
+                    
+                    foreach ($result['data']['Details'] as $branch) {
+                        if ($branch['BranchAbbreviation'] == 'PXN' || $branch['BranchName'] == 'Paxton Carnegie Library') {
+                            $availableCount = $branch['AvailableCount'];
+                            $totalCount = $branch['TotalCount'];
+                            break;
+                        }
+                    }
+                    
+                    // Apply availability to all items in this bib group
+                    foreach ($bibGroups[$bibId] as $barcode) {
+                        $results[$barcode] = [
+                            'available' => $availableCount > 0,
+                            'availableCount' => $availableCount,
+                            'totalCount' => $totalCount,
+                            'status' => $availableCount > 0 ? 'Available' : 'Checked Out'
+                        ];
+                    }
+                } else {
+                    // If we can't get bib availability, mark as unknown
+                    foreach ($bibGroups[$bibId] as $barcode) {
+                        $results[$barcode] = [
+                            'available' => false,
+                            'status' => 'Unknown',
+                            'error' => $result['error'] ?? 'Not found'
+                        ];
+                    }
+                }
+            }
+            
+            // Small delay between batches
+            if ($chunkIndex < count($chunks) - 1) {
+                usleep(100000); // 100ms delay
+            }
+        }
+        
+        return [
+            'ok' => true,
+            'data' => $results
+        ];
+    }
+    
+    /**
+     * Legacy method - kept for backwards compatibility
+     * Use bulkItemAvailability instead for better performance
+     */
+    public function bulkItemStatus($barcodes, $batchSize = 50) {
+        $results = [];
+        $chunks = array_chunk($barcodes, $batchSize);
+        
+        error_log("Checking status for " . count($barcodes) . " items in " . count($chunks) . " batches");
+        
+        foreach ($chunks as $chunkIndex => $chunk) {
+            error_log("Processing batch " . ($chunkIndex + 1) . "/" . count($chunks));
+            
+            foreach ($chunk as $barcode) {
+                // Get item status
+                $result = $this->getItemByBarcode($barcode);
+                
+                if ($result['ok'] && isset($result['data'])) {
+                    $item = $result['data'];
+                    $status = $item['CirculationStatusDescription'] ?? 'Unknown';
+                    $isAvailable = $this->isStatusAvailable($status);
+                    
+                    $results[$barcode] = [
+                        'status' => $status,
+                        'available' => $isAvailable,
+                        'statusId' => $item['CirculationStatusID'] ?? null
+                    ];
+                } else {
+                    $results[$barcode] = [
+                        'status' => 'Unknown',
+                        'available' => false,
+                        'statusId' => null,
+                        'error' => $result['error'] ?? 'Not found'
+                    ];
+                }
+            }
+            
+            // Small delay between batches to avoid overwhelming the API
+            if ($chunkIndex < count($chunks) - 1) {
+                usleep(100000); // 100ms delay
+            }
+        }
+        
+        return [
+            'ok' => true,
+            'data' => $results
+        ];
+    }
+    
+    /**
+     * Determine if a circulation status means the item is available
+     */
+    private function isStatusAvailable($status) {
+        $status = strtolower($status);
+        
+        // Available statuses
+        if (strpos($status, 'in') !== false && 
+            strpos($status, 'transit') === false && 
+            strpos($status, 'hold') === false &&
+            strpos($status, 'processing') === false) {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
      * Get patron by barcode
      */
     public function getPatronByBarcode($barcode) {
