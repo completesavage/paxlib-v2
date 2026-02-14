@@ -43,9 +43,15 @@ try {
     $currentOffset = $progress['offset'];
     
     // Load existing cache
-    $cache = file_exists($cacheFile)
-        ? json_decode(file_get_contents($cacheFile), true)
-        : ['statuses' => new stdClass(), 'timestamp' => time(), 'lastUpdated' => date('Y-m-d H:i:s')];
+    if (file_exists($cacheFile)) {
+        $cache = json_decode(file_get_contents($cacheFile), true);
+    } else {
+        $cache = [
+            'statuses' => [],
+            'timestamp' => time(),
+            'lastUpdated' => date('Y-m-d H:i:s')
+        ];
+    }
     
     // Get this batch
     $batch = array_slice($allMovies, $currentOffset, $batchSize);
@@ -107,8 +113,12 @@ try {
         }
         
         // Debug: Log what we're about to save
-        error_log("About to save cache with " . count($cache['statuses']) . " statuses");
-        error_log("First 3 keys: " . json_encode(array_slice(array_keys($cache['statuses']), 0, 3)));
+        $statusCount = is_array($cache['statuses']) ? count($cache['statuses']) : count((array)$cache['statuses']);
+        error_log("About to save cache with " . $statusCount . " statuses");
+        
+        if (is_array($cache['statuses']) && !empty($cache['statuses'])) {
+            error_log("First 3 keys: " . json_encode(array_slice(array_keys($cache['statuses']), 0, 3)));
+        }
         error_log("Is array: " . (is_array($cache['statuses']) ? 'YES' : 'NO'));
         
         // Save cache
@@ -133,7 +143,7 @@ try {
             'nextOffset' => $progress['offset'],
             'total' => $totalMovies,
             'percentComplete' => $percentComplete,
-            'totalCached' => count($cache['statuses']),
+            'totalCached' => is_array($cache['statuses']) ? count($cache['statuses']) : count((array)$cache['statuses']),
             'cycleAge' => $cycleAge,
             'continuing' => true
         ]);
