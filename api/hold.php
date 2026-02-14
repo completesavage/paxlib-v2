@@ -25,8 +25,8 @@ require_once __DIR__ . '/polaris.php';
 $input = json_decode(file_get_contents('php://input'), true);
 
 $patronBarcode = $input['patronBarcode'] ?? null;
-$bibRecordId = $input['bibRecordId'] ?? null;
-$itemBarcode = $input['itemBarcode'] ?? null;
+$bibRecordId   = $input['bibRecordId'] ?? null;
+$itemBarcode   = $input['itemBarcode'] ?? null;
 
 if (empty($patronBarcode)) {
     http_response_code(400);
@@ -42,72 +42,62 @@ if (empty($bibRecordId) && empty($itemBarcode)) {
 
 try {
     $api = new PolarisAPI();
-    
-    // If we have item barcode but no bib ID, look it up
+
+    // If item barcode is given but no bibRecordId, look it up
     if (empty($bibRecordId) && !empty($itemBarcode)) {
-            $itemResult = $api->getItemByBarcode($itemBarcode);
-           if ($itemResult['ok'] && isset($itemResult['data'])) {
-    
-            $bibRecordId =
-                $itemResult['data']['AssociatedBibRecordID'] ??
-                $itemResult['data']['AssociatedBibliographicRecordID'] ??
-                $itemResult['data']['BibliographicRecordID'] ??
-                $itemResult['data']['BibRecordID'] ??
-                null;
-        
-            if (!$bibRecordId) {
-                http_response_code(500);
-                echo json_encode([
-                    'ok' => false,
-                    'error' => 'Could not determine BibRecordID from item lookup',
-                    'details' => $itemResult['data']
-                ]);
-                exit;
-            }
-    
+
+        $itemResult = $api->getItemByBarcode($itemBarcode);
+
+        if ($itemResult['ok'] && isset($itemResult['data']['AssociatedBibRecordID'])) {
+            $bibRecordId = $itemResult['data']['AssociatedBibRecordID'];
         } else {
             http_response_code(404);
-            echo json_encode(['ok' => false, 'error' => 'Item not found', 'details' => $itemResult]);
-            exit;
-    } else {
-            http_response_code(404);
-            echo json_encode(['ok' => false, 'error' => 'Item not found']);
+            echo json_encode([
+                'ok' => false,
+                'error' => 'Item not found',
+                'details' => $itemResult
+            ]);
             exit;
         }
     }
-    
+
     // Place the hold
     $result = $api->placeHold($patronBarcode, $bibRecordId);
-    
+
     if ($result['ok']) {
         echo json_encode([
             'ok' => true,
             'message' => 'Hold placed successfully',
             'data' => $result['data'] ?? null
         ]);
-    } else {
-        $errorMsg = 'Failed to place hold';
-        
-        // Try to extract meaningful error from workflow response
-        if (isset($result['data']['Prompt']['Message'])) {
-            $errorMsg = $result['data']['Prompt']['Message'];
-        } elseif (isset($result['data']['InformationMessages'][0]['Message'])) {
-            $errorMsg = $result['data']['InformationMessages'][0]['Message'];
-        } elseif (isset($result['error'])) {
-            $errorMsg = $result['error'];
-        }
-        
-        http_response_code(400);
-        echo json_encode([
-            'ok' => false,
-            'error' => $errorMsg,
-            'details' => $result['data'] ?? null
-        ]);
+        exit;
     }
+
+    // If failed, extract best possible message
+    $errorMsg = 'Failed to place hold';
+
+    if (isset($result['data']['Prompt']['Message'])) {
+        $errorMsg = $result['data']['Prompt']['Message'];
+    } elseif (isset($result['data']['InformationMessages'][0]['Message'])) {
+        $errorMsg = $result['data']['InformationMessages'][0]['Message'];
+    } elseif (isset($result['error'])) {
+        $errorMsg = $result['error'];
+    }
+
+    http_response_code(400);
+    echo json_encode([
+        'ok' => false,
+        'error' => $errorMsg,
+        'details' => $result
+    ]);
+    exit;
+
 } catch (Exception $e) {
+
     http_response_code(500);
     echo json_encode([
         'ok' => false,
         'error' => 'Server error: ' . $e->getMessage()
     ]);
+    exit;
 }
