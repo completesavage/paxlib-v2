@@ -87,6 +87,7 @@ class PolarisAPI {
      * Much more efficient - checks entire bib record availability at once
      */
     public function bulkItemAvailability($movies, $batchSize = 50) {
+        $startTime = microtime(true);
         $results = [];
         
         // Group movies by their bibRecordId
@@ -103,62 +104,57 @@ class PolarisAPI {
             }
         }
         
-        error_log("Checking availability for " . count($bibGroups) . " bib records (covering " . count($movies) . " items)");
+        $uniqueBibCount = count($bibGroups);
+        error_log("Checking availability for $uniqueBibCount unique bib records (covering " . count($movies) . " items)");
         
-        $chunks = array_chunk(array_keys($bibGroups), $batchSize);
+        $apiCallCount = 0;
+        $bibIds = array_keys($bibGroups);
         
-        foreach ($chunks as $chunkIndex => $bibIds) {
-            error_log("Processing batch " . ($chunkIndex + 1) . "/" . count($chunks));
+        foreach ($bibIds as $bibId) {
+            $apiCallCount++;
+            $callStart = microtime(true);
             
-            foreach ($bibIds as $bibId) {
-                // Get availability for this bib record
-                $path = "polaris/{$this->orgId}/{$this->workstationId}/bibliographicrecords/{$bibId}/availability?nofilter=true";
-                $result = $this->apiRequest('GET', $path);
+            // Get availability for this bib record
+            $path = "polaris/{$this->orgId}/{$this->workstationId}/bibliographicrecords/{$bibId}/availability?nofilter=true";
+            $result = $this->apiRequest('GET', $path);
+            
+            $callTime = round((microtime(true) - $callStart) * 1000);
+            error_log("API call $apiCallCount/$uniqueBibCount for bib $bibId took {$callTime}ms");
+            
+            if ($result['ok'] && isset($result['data']['Details'])) {
+                // Sum up ALL branches
+                $totalAvailable = 0;
+                $totalCount = 0;
                 
-                if ($result['ok'] && isset($result['data']['Details'])) {
-                    // Log first bib record details to see what branches exist
-                    if ($chunkIndex == 0 && $bibId == $bibIds[0]) {
-                        error_log("First bib record details: " . print_r($result['data']['Details'], true));
-                    }
-                    
-                    // Sum up ALL branches instead of looking for specific one
-                    $totalAvailable = 0;
-                    $totalCount = 0;
-                    
-                    foreach ($result['data']['Details'] as $branch) {
-                        $totalAvailable += $branch['AvailableCount'];
-                        $totalCount += $branch['TotalCount'];
-                    }
-                    
-                    error_log("Bib $bibId: Available $totalAvailable / Total $totalCount across all branches");
-                    
-                    // Apply availability to all items in this bib group
-                    foreach ($bibGroups[$bibId] as $barcode) {
-                        $results[$barcode] = [
-                            'available' => $totalAvailable > 0,
-                            'availableCount' => $totalAvailable,
-                            'totalCount' => $totalCount,
-                            'status' => $totalAvailable > 0 ? 'Available' : 'Checked Out'
-                        ];
-                    }
-                } else {
-                    error_log("Failed to get bib availability for $bibId: " . ($result['error'] ?? 'unknown error'));
-                    // If we can't get bib availability, mark as unknown
-                    foreach ($bibGroups[$bibId] as $barcode) {
-                        $results[$barcode] = [
-                            'available' => false,
-                            'status' => 'Unknown',
-                            'error' => $result['error'] ?? 'Not found'
-                        ];
-                    }
+                foreach ($result['data']['Details'] as $branch) {
+                    $totalAvailable += $branch['AvailableCount'];
+                    $totalCount += $branch['TotalCount'];
+                }
+                
+                // Apply availability to all items in this bib group
+                foreach ($bibGroups[$bibId] as $barcode) {
+                    $results[$barcode] = [
+                        'available' => $totalAvailable > 0,
+                        'availableCount' => $totalAvailable,
+                        'totalCount' => $totalCount,
+                        'status' => $totalAvailable > 0 ? 'Available' : 'Checked Out'
+                    ];
+                }
+            } else {
+                error_log("Failed to get bib availability for $bibId");
+                // If we can't get bib availability, mark as unknown
+                foreach ($bibGroups[$bibId] as $barcode) {
+                    $results[$barcode] = [
+                        'available' => false,
+                        'status' => 'Unknown',
+                        'error' => $result['error'] ?? 'Not found'
+                    ];
                 }
             }
-            
-            // Small delay between batches
-            if ($chunkIndex < count($chunks) - 1) {
-                usleep(100000); // 100ms delay
-            }
         }
+        
+        $totalTime = round((microtime(true) - $startTime), 2);
+        error_log("Completed $apiCallCount API calls in {$totalTime}s (avg " . round($totalTime/$apiCallCount, 2) . "s per call)");
         
         return [
             'ok' => true,
