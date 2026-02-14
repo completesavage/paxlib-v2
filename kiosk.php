@@ -379,6 +379,75 @@ body {
 .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.success { background: #2e7d32; }
 .toast.error { background: #d32f2f; }
+
+/* Holds display */
+.hold-card {
+  background: white;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  display: flex;
+  gap: 15px;
+  align-items: start;
+}
+.hold-poster {
+  width: 80px;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #e0e0e0;
+  flex-shrink: 0;
+}
+.hold-details { flex: 1; }
+.hold-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #1b5e20;
+}
+.hold-meta {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 4px;
+}
+.hold-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 8px;
+}
+.hold-status.ready {
+  background: #4caf50;
+  color: white;
+}
+.hold-status.pending {
+  background: #ff9800;
+  color: white;
+}
+.hold-status.shipped {
+  background: #2196f3;
+  color: white;
+}
+.hold-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.hold-actions .btn {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.holds-section-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1b5e20;
+  margin-bottom: 15px;
+  padding-left: 5px;
+}
+
 </style>
 </head>
 <body>
@@ -402,6 +471,7 @@ body {
   <button class="nav-btn active" data-tab="browse">Browse</button>
   <button class="nav-btn" data-tab="all">All Movies</button>
   <button class="nav-btn" data-tab="search">Search</button>
+  <button class="nav-btn" data-tab="holds" id="btnHoldsTab" style="display: none;">My Holds</button>
 </nav>
 
 <div class="search-bar" id="searchBar">
@@ -449,6 +519,24 @@ body {
       <div style="font-size:40px;margin-bottom:10px;">🔍</div>
       <div style="font-weight:600;">Search for a movie</div>
       <div>Enter a title above</div>
+    </div>
+  </section>
+  
+  <!-- My Holds tab -->
+  <section class="section" id="tabHolds">
+    <div id="holdsLoading" class="loading">
+      <div class="spinner"></div>
+      <div>Loading your holds...</div>
+    </div>
+    <div id="holdsContent" style="display:none; padding: 20px;">
+      <div id="holdsReady" style="margin-bottom: 30px;"></div>
+      <div id="holdsWaiting" style="margin-bottom: 30px;"></div>
+      <div id="holdsOther"></div>
+    </div>
+    <div class="empty" id="holdsEmpty" style="display:none;">
+      <div style="font-size:40px;margin-bottom:10px;">📚</div>
+      <div style="font-weight:600;">No Holds</div>
+      <div>You don't have any active holds</div>
     </div>
   </section>
 </main>
@@ -752,6 +840,7 @@ async function doLogin() {
     $('#userInfo').classList.add('visible');
     $('#btnLogin').style.display = 'none';
     $('#btnLogout').style.display = 'block';
+    $('#btnHoldsTab').style.display = 'block'; // Show holds tab
 
     closeLogin();
     toast(`Welcome, ${currentUser.name}!`, 'success');
@@ -772,8 +861,131 @@ function doLogout() {
   $('#userInfo').classList.remove('visible');
   $('#btnLogin').style.display = 'block';
   $('#btnLogout').style.display = 'none';
+  $('#btnHoldsTab').style.display = 'none'; // Hide holds tab
+  
+  // Switch back to browse tab if on holds
+  const activeBtn = document.querySelector('.nav-btn.active');
+  if (activeBtn && activeBtn.dataset.tab === 'holds') {
+    $$('.nav-btn')[0].click(); // Click first tab (Browse)
+  }
+  
   hideTimeout();
   toast('Signed out');
+}
+
+// Load patron holds
+async function loadHolds() {
+  if (!currentUser) return;
+  
+  $('#holdsLoading').style.display = 'block';
+  $('#holdsContent').style.display = 'none';
+  $('#holdsEmpty').style.display = 'none';
+  
+  try {
+    const res = await fetch(`api/patron-holds.php?patronBarcode=${encodeURIComponent(currentUser.barcode)}`);
+    const data = await res.json();
+    
+    if (!data.ok) {
+      toast('Failed to load holds', 'error');
+      return;
+    }
+    
+    const holds = data.holds || [];
+    
+    if (holds.length === 0) {
+      $('#holdsLoading').style.display = 'none';
+      $('#holdsEmpty').style.display = 'block';
+      return;
+    }
+    
+    // Group holds by status
+    const ready = holds.filter(h => h.RequestStatusDescription === 'Held');
+    const waiting = holds.filter(h => ['Active', 'Pending', 'Shipped'].includes(h.RequestStatusDescription));
+    const other = holds.filter(h => !['Held', 'Active', 'Pending', 'Shipped'].includes(h.RequestStatusDescription));
+    
+    // Display holds
+    $('#holdsReady').innerHTML = ready.length > 0 
+      ? `<div class="holds-section-title">📦 Ready for Pickup (${ready.length})</div>` + ready.map(renderHold).join('')
+      : '';
+      
+    $('#holdsWaiting').innerHTML = waiting.length > 0
+      ? `<div class="holds-section-title">⏳ Waiting (${waiting.length})</div>` + waiting.map(renderHold).join('')
+      : '';
+      
+    $('#holdsOther').innerHTML = other.length > 0
+      ? `<div class="holds-section-title">📋 Other (${other.length})</div>` + other.map(renderHold).join('')
+      : '';
+    
+    $('#holdsLoading').style.display = 'none';
+    $('#holdsContent').style.display = 'block';
+    
+  } catch (e) {
+    console.error('Failed to load holds:', e);
+    toast('Failed to load holds', 'error');
+    $('#holdsLoading').style.display = 'none';
+  }
+}
+
+// Render a single hold card
+function renderHold(hold) {
+  const statusClass = hold.RequestStatusDescription === 'Held' ? 'ready' 
+    : hold.RequestStatusDescription === 'Pending' ? 'pending'
+    : 'shipped';
+  
+  const canCancel = ['Active', 'Pending', 'Shipped', 'Held'].includes(hold.RequestStatusDescription);
+  
+  return `
+    <div class="hold-card">
+      <img src="${hold.Cover || 'assets/placeholder.jpg'}" class="hold-poster" alt="${esc(hold.BrowseTitle)}">
+      <div class="hold-details">
+        <div class="hold-title">${esc(hold.BrowseTitle)}</div>
+        <div class="hold-meta">📍 Pickup: ${esc(hold.PickupBranchName)}</div>
+        <div class="hold-meta">📅 Requested: ${formatDate(hold.StatusDate)}</div>
+        ${hold.ItemBarcode ? `<div class="hold-meta">🏷️ Barcode: ${esc(hold.ItemBarcode)}</div>` : ''}
+        <span class="hold-status ${statusClass}">${esc(hold.RequestStatusDescription)}</span>
+        ${canCancel ? `
+          <div class="hold-actions">
+            <button class="btn btn-gray" onclick="cancelHold(${hold.RequestID})">Cancel Hold</button>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// Cancel a hold
+async function cancelHold(holdRequestId) {
+  if (!confirm('Are you sure you want to cancel this hold?')) return;
+  
+  try {
+    const res = await fetch('api/cancel-hold.php', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holdRequestId: holdRequestId,
+        patronBarcode: currentUser.barcode
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (data.ok) {
+      toast('Hold cancelled successfully', 'success');
+      loadHolds(); // Reload holds
+    } else {
+      toast('Failed to cancel hold: ' + (data.error || 'Unknown error'), 'error');
+    }
+  } catch (e) {
+    console.error('Cancel hold error:', e);
+    toast('Failed to cancel hold', 'error');
+  }
+}
+
+// Format date
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // Request movie
@@ -897,6 +1109,11 @@ function setupEvents() {
       $('#searchBar').classList.toggle('visible', btn.dataset.tab === 'search');
       if (btn.dataset.tab === 'search') {
         setTimeout(() => $('#searchInput').focus(), 100);
+      }
+      
+      // Load holds when holds tab is clicked
+      if (btn.dataset.tab === 'holds' && currentUser) {
+        loadHolds();
       }
       
       resetIdleTimer();
