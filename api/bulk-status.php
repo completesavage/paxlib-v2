@@ -71,10 +71,16 @@ try {
         
         // If cache is less than 10 minutes old, use it
         if ($cacheAge < $cacheMaxAge) {
+            $statuses = $cachedData['statuses'] ?? [];
+            // Ensure empty array becomes empty object for JSON
+            if (empty($statuses)) {
+                $statuses = new stdClass();
+            }
+            
             echo json_encode([
                 'ok' => true,
-                'statuses' => $cachedData['statuses'] ?? [],
-                'checked' => count($cachedData['statuses'] ?? []),
+                'statuses' => $statuses,
+                'checked' => is_array($cachedData['statuses'] ?? []) ? count($cachedData['statuses'] ?? []) : 0,
                 'timestamp' => $cachedData['timestamp'] ?? time(),
                 'cached' => true,
                 'cacheAge' => $cacheAge,
@@ -85,10 +91,16 @@ try {
             // Cache is stale, trigger background refresh but return stale data
             error_log("Cache is stale, returning old data and triggering refresh");
             
+            $statuses = $cachedData['statuses'] ?? [];
+            // Ensure empty array becomes empty object for JSON
+            if (empty($statuses)) {
+                $statuses = new stdClass();
+            }
+            
             echo json_encode([
                 'ok' => true,
-                'statuses' => $cachedData['statuses'] ?? [],
-                'checked' => count($cachedData['statuses'] ?? []),
+                'statuses' => $statuses,
+                'checked' => is_array($cachedData['statuses'] ?? []) ? count($cachedData['statuses'] ?? []) : 0,
                 'timestamp' => $cachedData['timestamp'] ?? time(),
                 'cached' => true,
                 'stale' => true,
@@ -100,12 +112,12 @@ try {
         }
     }
     
-    // No cache exists, return empty and trigger refresh
+    // No cache exists, return empty object (not array) and trigger refresh
     error_log("No cache found, returning empty");
     
     echo json_encode([
         'ok' => true,
-        'statuses' => [],
+        'statuses' => new stdClass(), // Empty object, not array
         'checked' => 0,
         'timestamp' => time(),
         'cached' => false,
