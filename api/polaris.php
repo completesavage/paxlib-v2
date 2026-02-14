@@ -228,4 +228,36 @@ class PolarisAPI {
             'raw' => $responseBody
         ];
     }
+    public function placeLocalHold($patronId, $bibRecordId, $pickupBranchId, $origin = 2) {
+        $url = "{$this->baseUrl}/api/v1/{$this->langCode}/{$this->siteId}/holds?bulkmode=false&isORSStaffNoteManuallySupplied=false";
+        
+        $today = date('Y-m-d\TH:i:s');
+        $future = date('Y-m-d\TH:i:s', strtotime('+1 month'));
+        
+        $body = [
+            'ProcedureStep' => 1,
+            'PatronID' => (int)$patronId,
+            'PickupBranchID' => (int)$pickupBranchId,
+            'Origin' => (int)$origin,
+            'ActivationDate' => $today,
+            'ExpirationDate' => $future,
+            'BibliographicRecordID' => (int)$bibRecordId
+        ];
+        
+        $response = $this->apiRequest('POST', 'holds?bulkmode=false&isORSStaffNoteManuallySupplied=false', json_encode($body));
+        
+        // Check for follow-up steps automatically
+        while (!$response['data']['Success'] && isset($response['data']['PAPIProcedureStep'])) {
+            $step = $response['data']['PAPIProcedureStep'];
+            $response = $this->apiRequest('POST', 'holds?bulkmode=false&isORSStaffNoteManuallySupplied=false', json_encode([
+                'ProcedureStep' => $step,
+                'Answer' => 1, // automatically continue
+                'PatronID' => (int)$patronId,
+                'PickupBranchID' => (int)$pickupBranchId,
+                'Origin' => (int)$origin
+            ]));
+        }
+        
+        return $response;
+    }
 }
