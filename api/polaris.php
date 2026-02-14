@@ -245,7 +245,16 @@ class PolarisAPI {
         ];
         
         $response = $this->apiRequest('POST', 'holds?bulkmode=false&isORSStaffNoteManuallySupplied=false', json_encode($body));
-        
+
+        if (!isset($response['data']) || !is_array($response['data'])) {
+            return [
+                'ok' => false,
+                'status' => $response['status'] ?? 500,
+                'data' => null,
+                'raw' => $response['raw'] ?? '',
+                'error' => 'No data returned from API'
+            ];
+        }
         // Check for follow-up steps automatically
         while (!$response['data']['Success'] && isset($response['data']['PAPIProcedureStep'])) {
             $step = $response['data']['PAPIProcedureStep'];
