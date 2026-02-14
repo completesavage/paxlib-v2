@@ -151,7 +151,11 @@ class PolarisAPI {
             $path .= "&patronId={$patronId}";
         }
         
+        error_log("Cancelling hold: $holdRequestId, path: $path");
+        
         $result = $this->apiRequest('PUT', $path);
+        
+        error_log("Cancel hold API result: " . print_r($result, true));
         
         if ($result['ok']) {
             return [
