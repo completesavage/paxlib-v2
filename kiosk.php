@@ -734,13 +734,26 @@ async function loadStatuses() {
   
   try {
     const res = await fetch('api/bulk-status.php?all=true');
-    const data = await res.json();
+    const text = await res.text();
+    console.log('Raw response first 500 chars:', text.substring(0, 500));
+    
+    const data = JSON.parse(text);
+    console.log('Parsed data:', data);
+    console.log('data.statuses type:', typeof data.statuses);
+    console.log('data.statuses is array:', Array.isArray(data.statuses));
+    
+    if (Array.isArray(data.statuses)) {
+      console.error('ERROR: statuses is an array, should be an object with barcode keys!');
+      console.log('First item:', data.statuses[0]);
+      return;
+    }
     
     if (data.ok) {
       movieStatuses = data.statuses;
       statusesLoaded = true;
       
       console.log(`Loaded ${data.checked} statuses from cache`);
+      console.log('First 5 barcode keys:', Object.keys(movieStatuses).slice(0, 5));
       
       // Update movies
       updateMovieAvailability();
