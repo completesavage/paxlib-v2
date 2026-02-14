@@ -153,7 +153,8 @@ class PolarisAPI {
         
         error_log("Cancelling hold: $holdRequestId, path: $path");
         
-        $result = $this->apiRequest('PUT', $path);
+        // Send empty JSON object as body to satisfy Content-Length requirement
+        $result = $this->apiRequest('PUT', $path, '{}');
         
         error_log("Cancel hold API result: " . print_r($result, true));
         
@@ -330,7 +331,13 @@ class PolarisAPI {
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         
-        if ($body !== null) {
+        // Always set body for PUT/POST, even if empty
+        if ($method === 'PUT' || $method === 'POST') {
+            if ($body === null) {
+                $body = '';
+            }
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        } elseif ($body !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
         }
         
