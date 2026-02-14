@@ -739,10 +739,23 @@ async function loadStatuses() {
   console.log('Sample movie data:', movies.slice(0, 3));
   
   try {
-    const res = await fetch('api/bulk-status.php?all=true');
+    // TEMPORARY: Test with just 10 movies first
+    console.log('Testing with limit=10 first...');
+    const res = await fetch('api/bulk-status.php?all=true&limit=10');
     console.log('Bulk status response status:', res.status);
     
-    const data = await res.json();
+    const responseText = await res.text();
+    console.log('Raw response:', responseText);
+    
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse response as JSON:', e);
+      console.error('Response was:', responseText);
+      return;
+    }
+    
     console.log('Bulk status response:', data);
     
     if (data.ok) {
