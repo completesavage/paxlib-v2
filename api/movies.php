@@ -179,22 +179,15 @@ if ($method === 'GET') {
                 
                 // Use the efficient bib-level check if we have bibRecordId
                 if (!empty($movie['bibRecordId'])) {
-                    $path = "polaris/699/3073/bibliographicrecords/{$movie['bibRecordId']}/availability?nofilter=true";
-                    $result = $api->apiRequest('GET', $path);
+                    // Use the bulkItemAvailability method which already works
+                    $result = $api->bulkItemAvailability([$movie], 1);
                     
-                    if ($result['ok'] && isset($result['data']['Details'])) {
-                        $totalAvailable = 0;
-                        $totalCount = 0;
-                        
-                        foreach ($result['data']['Details'] as $branch) {
-                            $totalAvailable += $branch['AvailableCount'];
-                            $totalCount += $branch['TotalCount'];
-                        }
-                        
-                        $movie['status'] = $totalAvailable > 0 ? 'Available' : 'Checked Out';
-                        $movie['available'] = $totalAvailable > 0;
-                        $movie['availableCount'] = $totalAvailable;
-                        $movie['totalCount'] = $totalCount;
+                    if ($result['ok'] && isset($result['data'][$barcode])) {
+                        $statusData = $result['data'][$barcode];
+                        $movie['status'] = $statusData['status'];
+                        $movie['available'] = $statusData['available'];
+                        $movie['availableCount'] = $statusData['availableCount'] ?? 0;
+                        $movie['totalCount'] = $statusData['totalCount'] ?? 0;
                     } else {
                         // Fallback to item-level check
                         $itemResult = $api->getItemByBarcode($barcode);
@@ -238,7 +231,7 @@ if ($method === 'GET') {
                 $movie['status'] = 'Error checking status';
             }
         } else {
-            $movie['status'] = 'Status check unavailable';
+            $movie['status'] = 'API unavailable';
         }
         
         echo json_encode(['ok' => true, 'movie' => $movie]);
