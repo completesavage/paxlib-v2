@@ -77,6 +77,63 @@ body {
 .nav-btn:hover { color: #2e7d32; background: #f5f5f5; }
 .nav-btn.active { color: #1b5e20; border-bottom-color: #1b5e20; }
 
+/* Filter Bar */
+.filter-bar {
+  background: white;
+  border-bottom: 2px solid #e0e0e0;
+  padding: 15px 20px;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+.filter-btn {
+  flex: 1;
+  max-width: 350px;
+  padding: 18px 24px;
+  font-size: 18px;
+  font-weight: 700;
+  border-radius: 10px;
+  border: 3px solid #ddd;
+  background: white;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.filter-btn:hover {
+  background: #f5f5f5;
+  border-color: #bbb;
+}
+.filter-btn.active {
+  background: #2e7d32;
+  color: white;
+  border-color: #2e7d32;
+}
+.filter-btn .count {
+  background: rgba(0,0,0,0.15);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.filter-btn.active .count {
+  background: rgba(255,255,255,0.25);
+}
+
+/* Unavailable movie styling */
+.movie-card.unavailable {
+  opacity: 0.6;
+}
+.movie-card.unavailable .movie-poster {
+  filter: grayscale(100%);
+}
+.movie-card.unavailable:hover {
+  opacity: 0.8;
+}
+
 /* Search bar */
 .search-bar {
   background: white;
@@ -474,6 +531,18 @@ body {
   <button class="nav-btn" data-tab="holds" id="btnHoldsTab" style="display: none;">My Holds</button>
 </nav>
 
+<!-- Filter Bar -->
+<div class="filter-bar">
+  <button class="filter-btn active" id="filterAll" onclick="setFilter('all')">
+    <span>📚 All Movies</span>
+    <span class="count" id="countAll">0</span>
+  </button>
+  <button class="filter-btn" id="filterAvailable" onclick="setFilter('available')">
+    <span>✅ Available Now</span>
+    <span class="count" id="countAvailable">0</span>
+  </button>
+</div>
+
 <div class="search-bar" id="searchBar">
   <input type="text" class="search-input" id="searchInput" placeholder="Type a movie title...">
 </div>
@@ -621,6 +690,9 @@ const TIMEOUT_WARN = <?php echo $warning * 1000; ?>;
 
 let movies = [];
 let movieMap = {};
+let movieStatuses = {}; // barcode => {status, available}
+let currentFilter = 'all'; // 'all' or 'available'
+let statusesLoaded = false;
 let currentUser = null;
 let currentMovie = null;
 let idleTimer = null;
@@ -632,6 +704,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 // Initialize
 async function init() {
   await loadMovies();
+  loadStatuses(); // Load in background, don't wait
   renderAll();
   setupEvents();
 }
@@ -645,17 +718,82 @@ async function loadMovies() {
       movies = data.items || [];
       movieMap = Object.fromEntries(movies.map(m => [m.barcode, m]));
       console.log(`Loaded ${movies.length} movies`);
+      updateFilterCounts();
     }
   } catch (e) {
     console.error('Failed to load movies:', e);
   }
 }
 
+// Load availability statuses for all movies
+async function loadStatuses() {
+  console.log('Loading availability statuses...');
+  
+  try {
+    const res = await fetch('api/bulk-status.php?all=true');
+    const data = await res.json();
+    
+    if (data.ok) {
+      movieStatuses = data.statuses;
+      statusesLoaded = true;
+      console.log(`Loaded ${data.checked} item statuses`);
+      
+      // Update movie objects with availability
+      movies.forEach(m => {
+        if (movieStatuses[m.barcode]) {
+          m.available = movieStatuses[m.barcode].available;
+          m.statusText = movieStatuses[m.barcode].status;
+        }
+      });
+      
+      updateFilterCounts();
+      renderAll(); // Re-render with availability info
+    }
+  } catch (e) {
+    console.error('Failed to load statuses:', e);
+  }
+}
+
+// Set filter
+function setFilter(filter) {
+  currentFilter = filter;
+  
+  // Update button states
+  $('#filterAll').classList.toggle('active', filter === 'all');
+  $('#filterAvailable').classList.toggle('active', filter === 'available');
+  
+  // Re-render all sections
+  renderAll();
+  
+  // If on search, re-run search
+  const searchInput = $('#searchInput');
+  if (searchInput.value.trim()) {
+    doSearch(searchInput.value);
+  }
+}
+
+// Get filtered movies based on current filter
+function getFilteredMovies(movieList = movies) {
+  if (currentFilter === 'available') {
+    return movieList.filter(m => m.available === true);
+  }
+  return movieList;
+}
+
+// Update filter counts
+function updateFilterCounts() {
+  const availableCount = movies.filter(m => m.available === true).length;
+  $('#countAll').textContent = movies.length;
+  $('#countAvailable').textContent = availableCount;
+}
+
 // Render movie card
 function card(m) {
   const coverSrc = m.cover || NO_COVER;
+  const unavailableClass = m.available === false ? ' unavailable' : '';
+  
   return `
-    <div class="movie-card" data-barcode="${m.barcode}">
+    <div class="movie-card${unavailableClass}" data-barcode="${m.barcode}">
       <img class="movie-poster" src="${coverSrc}" onerror="this.src='${NO_COVER}'" loading="lazy">
       <div class="movie-info">
         <div class="movie-title">${esc(m.title)}</div>
@@ -667,6 +805,8 @@ function card(m) {
 
 // Render all sections
 function renderAll() {
+  const filteredMovies = getFilteredMovies();
+  
   fetch('api/settings.php')
     .then(r => r.json())
     .then(data => {
@@ -674,31 +814,31 @@ function renderAll() {
       
       // Featured
       const featuredBarcodes = s.featured || [];
-      const featured = featuredBarcodes.map(bc => movieMap[bc]).filter(Boolean);
+      const featured = getFilteredMovies(featuredBarcodes.map(bc => movieMap[bc]).filter(Boolean));
       $('#rowFeatured').innerHTML = featured.length 
         ? featured.map(card).join('') 
-        : movies.slice(0, 10).map(card).join('');
+        : filteredMovies.slice(0, 10).map(card).join('');
       
       // New arrivals
       const newBarcodes = s.newArrivals || [];
-      const newArrivals = newBarcodes.map(bc => movieMap[bc]).filter(Boolean);
+      const newArrivals = getFilteredMovies(newBarcodes.map(bc => movieMap[bc]).filter(Boolean));
       $('#rowNew').innerHTML = newArrivals.length 
         ? newArrivals.map(card).join('') 
-        : movies.slice(10, 20).map(card).join('');
+        : filteredMovies.slice(10, 20).map(card).join('');
       
       // Recent
-      $('#rowRecent').innerHTML = movies.slice(20, 35).map(card).join('');
+      $('#rowRecent').innerHTML = filteredMovies.slice(20, 35).map(card).join('');
       
       // All movies grid
-      $('#gridAll').innerHTML = movies.map(card).join('');
+      $('#gridAll').innerHTML = filteredMovies.map(card).join('');
       
       attachClicks();
     })
     .catch(() => {
-      $('#rowFeatured').innerHTML = movies.slice(0, 10).map(card).join('');
-      $('#rowNew').innerHTML = movies.slice(10, 20).map(card).join('');
-      $('#rowRecent').innerHTML = movies.slice(20, 35).map(card).join('');
-      $('#gridAll').innerHTML = movies.map(card).join('');
+      $('#rowFeatured').innerHTML = filteredMovies.slice(0, 10).map(card).join('');
+      $('#rowNew').innerHTML = filteredMovies.slice(10, 20).map(card).join('');
+      $('#rowRecent').innerHTML = filteredMovies.slice(20, 35).map(card).join('');
+      $('#gridAll').innerHTML = filteredMovies.map(card).join('');
       
       attachClicks();
     });
@@ -723,10 +863,14 @@ function doSearch(q) {
     return;
   }
 
-  const results = movies.filter(m =>
+  // First filter by search query
+  const searchMatches = movies.filter(m =>
     (m.title || '').toLowerCase().includes(q) ||
     String(m.barcode || '').toLowerCase().includes(q)
   );
+  
+  // Then apply availability filter
+  const results = getFilteredMovies(searchMatches);
 
   console.log(`Search for "${q}": found ${results.length} results`);
 
