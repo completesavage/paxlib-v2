@@ -5,6 +5,10 @@
  * Query params: ?barcodes=123,456,789 or ?all=true
  */
 
+// Increase execution time for this script
+set_time_limit(300); // 5 minutes
+ini_set('max_execution_time', '300');
+
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
@@ -24,6 +28,7 @@ require_once __DIR__ . '/polaris.php';
 
 $all = isset($_GET['all']) && $_GET['all'] === 'true';
 $barcodes = isset($_GET['barcodes']) ? explode(',', $_GET['barcodes']) : [];
+$limit = isset($_GET['limit']) ? (int)$_GET['limit'] : null; // Optional limit for testing
 
 if (!$all && empty($barcodes)) {
     http_response_code(400);
@@ -45,14 +50,26 @@ try {
         
         $moviesData = json_decode(file_get_contents($moviesFile), true);
         
+        // Apply limit if specified (for testing)
+        if ($limit !== null && $limit > 0) {
+            $moviesData = array_slice($moviesData, 0, $limit);
+            error_log("Limited to first $limit movies for testing");
+        }
+        
+        error_log("Starting bulk availability check for " . count($moviesData) . " movies");
+        
         // Use the new efficient bib availability method
         $statuses = $api->bulkItemAvailability($moviesData);
+        
+        error_log("Completed bulk availability check");
     } else {
         // For specific barcodes, use the old method
+        error_log("Checking " . count($barcodes) . " specific barcodes");
         $statuses = $api->bulkItemStatus($barcodes);
     }
     
     if (!$statuses['ok']) {
+        error_log("Status check failed: " . print_r($statuses, true));
         http_response_code(500);
         echo json_encode([
             'ok' => false,
@@ -62,6 +79,8 @@ try {
         exit;
     }
     
+    error_log("Returning " . count($statuses['data']) . " status results");
+    
     echo json_encode([
         'ok' => true,
         'statuses' => $statuses['data'],
@@ -70,6 +89,7 @@ try {
     ]);
     
 } catch (Exception $e) {
+    error_log("Exception in bulk-status: " . $e->getMessage());
     http_response_code(500);
     echo json_encode([
         'ok' => false,
