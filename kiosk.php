@@ -728,26 +728,48 @@ async function loadMovies() {
 // Load availability statuses for all movies
 async function loadStatuses() {
   console.log('Loading availability statuses...');
+  console.log('Total movies to check:', movies.length);
+  
+  // Check how many movies have bibRecordId
+  const moviesWithBibId = movies.filter(m => m.bibRecordId);
+  console.log('Movies with bibRecordId:', moviesWithBibId.length);
+  console.log('Movies without bibRecordId:', movies.length - moviesWithBibId.length);
+  
+  // Sample a few movies to see their structure
+  console.log('Sample movie data:', movies.slice(0, 3));
   
   try {
     const res = await fetch('api/bulk-status.php?all=true');
+    console.log('Bulk status response status:', res.status);
+    
     const data = await res.json();
+    console.log('Bulk status response:', data);
     
     if (data.ok) {
       movieStatuses = data.statuses;
       statusesLoaded = true;
       console.log(`Loaded ${data.checked} item statuses`);
+      console.log('Sample statuses:', Object.entries(movieStatuses).slice(0, 5));
       
       // Update movie objects with availability
+      let availableCount = 0;
       movies.forEach(m => {
         if (movieStatuses[m.barcode]) {
           m.available = movieStatuses[m.barcode].available;
           m.statusText = movieStatuses[m.barcode].status;
+          if (m.available) availableCount++;
+        } else {
+          console.warn('No status found for barcode:', m.barcode, m.title);
         }
       });
       
+      console.log('Total available movies:', availableCount);
+      console.log('Total unavailable movies:', movies.length - availableCount);
+      
       updateFilterCounts();
       renderAll(); // Re-render with availability info
+    } else {
+      console.error('Failed to load statuses:', data);
     }
   } catch (e) {
     console.error('Failed to load statuses:', e);
