@@ -45,10 +45,31 @@ try {
     
     // If we have item barcode but no bib ID, look it up
     if (empty($bibRecordId) && !empty($itemBarcode)) {
-        $itemResult = $api->getItemByBarcode($itemBarcode);
-        if ($itemResult['ok'] && isset($itemResult['data']['AssociatedBibRecordID'])) {
-            $bibRecordId = $itemResult['data']['AssociatedBibRecordID'];
+            $itemResult = $api->getItemByBarcode($itemBarcode);
+           if ($itemResult['ok'] && isset($itemResult['data'])) {
+    
+            $bibRecordId =
+                $itemResult['data']['AssociatedBibRecordID'] ??
+                $itemResult['data']['AssociatedBibliographicRecordID'] ??
+                $itemResult['data']['BibliographicRecordID'] ??
+                $itemResult['data']['BibRecordID'] ??
+                null;
+        
+            if (!$bibRecordId) {
+                http_response_code(500);
+                echo json_encode([
+                    'ok' => false,
+                    'error' => 'Could not determine BibRecordID from item lookup',
+                    'details' => $itemResult['data']
+                ]);
+                exit;
+            }
+    
         } else {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'Item not found', 'details' => $itemResult]);
+            exit;
+    } else {
             http_response_code(404);
             echo json_encode(['ok' => false, 'error' => 'Item not found']);
             exit;
