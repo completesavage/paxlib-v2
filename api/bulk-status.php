@@ -45,15 +45,37 @@ try {
         $cacheAge = time() - filemtime($cacheFile);
         $cachedData = json_decode(file_get_contents($cacheFile), true);
         
-        error_log("Cache found, age: {$cacheAge}s, complete: " . ($cachedData['complete'] ? 'yes' : 'no'));
+        // Check if statuses is an array (wrong format) and convert to object
+        if (isset($cachedData['statuses']) && is_array($cachedData['statuses'])) {
+            // Check if it's a numeric array (wrong) vs associative array (correct)
+            $firstKey = array_key_first($cachedData['statuses']);
+            if (is_int($firstKey)) {
+                // Wrong format - it's a numeric array, not barcode-keyed object
+                error_log("WARNING: Cache has wrong format (numeric array), needs rebuild");
+                // Delete bad cache and start fresh
+                unlink($cacheFile);
+                
+                echo json_encode([
+                    'ok' => true,
+                    'statuses' => [],
+                    'checked' => 0,
+                    'timestamp' => time(),
+                    'cached' => false,
+                    'message' => 'Cache format error, rebuilding...'
+                ]);
+                exit;
+            }
+        }
+        
+        error_log("Cache found, age: {$cacheAge}s");
         
         // If cache is less than 10 minutes old, use it
         if ($cacheAge < $cacheMaxAge) {
             echo json_encode([
                 'ok' => true,
-                'statuses' => $cachedData['statuses'],
-                'checked' => count($cachedData['statuses']),
-                'timestamp' => $cachedData['timestamp'],
+                'statuses' => $cachedData['statuses'] ?? [],
+                'checked' => count($cachedData['statuses'] ?? []),
+                'timestamp' => $cachedData['timestamp'] ?? time(),
                 'cached' => true,
                 'cacheAge' => $cacheAge,
                 'lastUpdated' => $cachedData['lastUpdated'] ?? null
@@ -63,23 +85,11 @@ try {
             // Cache is stale, trigger background refresh but return stale data
             error_log("Cache is stale, returning old data and triggering refresh");
             
-            // Trigger refresh in background (non-blocking)
-            // Use file_get_contents with async context
-            $opts = [
-                'http' => [
-                    'method' => 'GET',
-                    'timeout' => 1, // Don't wait for response
-                    'ignore_errors' => true
-                ]
-            ];
-            $context = stream_context_create($opts);
-            @file_get_contents('http://' . $_SERVER['HTTP_HOST'] . '/api/refresh-availability.php', false, $context);
-            
             echo json_encode([
                 'ok' => true,
-                'statuses' => $cachedData['statuses'],
-                'checked' => count($cachedData['statuses']),
-                'timestamp' => $cachedData['timestamp'],
+                'statuses' => $cachedData['statuses'] ?? [],
+                'checked' => count($cachedData['statuses'] ?? []),
+                'timestamp' => $cachedData['timestamp'] ?? time(),
                 'cached' => true,
                 'stale' => true,
                 'cacheAge' => $cacheAge,
@@ -91,18 +101,7 @@ try {
     }
     
     // No cache exists, return empty and trigger refresh
-    error_log("No cache found, triggering initial refresh");
-    
-    // Trigger refresh
-    $opts = [
-        'http' => [
-            'method' => 'GET',
-            'timeout' => 1,
-            'ignore_errors' => true
-        ]
-    ];
-    $context = stream_context_create($opts);
-    @file_get_contents('http://' . $_SERVER['HTTP_HOST'] . '/api/refresh-availability.php', false, $context);
+    error_log("No cache found, returning empty");
     
     echo json_encode([
         'ok' => true,
@@ -110,8 +109,7 @@ try {
         'checked' => 0,
         'timestamp' => time(),
         'cached' => false,
-        'refreshing' => true,
-        'message' => 'Initial refresh started'
+        'message' => 'No cache, will be built by continuous checker'
     ]);
     
 } catch (Exception $e) {
