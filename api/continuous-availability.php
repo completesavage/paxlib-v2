@@ -45,7 +45,7 @@ try {
     // Load existing cache
     $cache = file_exists($cacheFile)
         ? json_decode(file_get_contents($cacheFile), true)
-        : ['statuses' => [], 'timestamp' => time(), 'lastUpdated' => date('Y-m-d H:i:s')];
+        : ['statuses' => new stdClass(), 'timestamp' => time(), 'lastUpdated' => date('Y-m-d H:i:s')];
     
     // Get this batch
     $batch = array_slice($allMovies, $currentOffset, $batchSize);
@@ -73,7 +73,8 @@ try {
         $cache['lastUpdated'] = date('Y-m-d H:i:s');
         $cache['timestamp'] = time();
         
-        // Ensure we have at least one entry to prevent empty array encoding
+        // Ensure statuses is encoded as object, not array
+        // If empty, use stdClass; if not empty, ensure it's an associative array (which encodes as object)
         if (empty($cache['statuses'])) {
             $cache['statuses'] = new stdClass();
         }
