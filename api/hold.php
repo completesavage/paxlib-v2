@@ -46,7 +46,6 @@ try {
 
     // If item barcode is given but no bibRecordId, look it up
     if (empty($bibRecordId) && !empty($itemBarcode)) {
-
         $itemResult = $api->getItemByBarcode($itemBarcode);
 
         if ($itemResult['ok'] && isset($itemResult['data']['AssociatedBibRecordID'])) {
@@ -61,11 +60,16 @@ try {
             exit;
         }
     }
+    
     // Lookup patron ID from barcode
     $patronResult = $api->getPatronByBarcode($patronBarcode);
     if (!$patronResult['ok'] || !isset($patronResult['data']['PatronID'])) {
         http_response_code(404);
-        echo json_encode(['ok' => false, 'error' => 'Patron not found']);
+        echo json_encode([
+            'ok' => false, 
+            'error' => 'Patron not found',
+            'details' => $patronResult
+        ]);
         exit;
     }
     $patronId = $patronResult['data']['PatronID'];
@@ -73,24 +77,23 @@ try {
     // Place the hold
     $result = $api->placeLocalHold($patronId, $bibRecordId, $pickupBranchId);
 
-    if ($result['ok'] && isset($result['data']['Success']) && $result['data']['Success']) {
+    // Check if hold was successful
+    if ($result['ok'] && isset($result['data']['Success']) && $result['data']['Success'] === true) {
         echo json_encode([
             'ok' => true,
             'message' => 'Hold placed successfully',
-            'HoldRequestID' => $result['data']['HoldRequestID']
+            'HoldRequestID' => $result['data']['HoldRequestID'] ?? null,
+            'data' => $result['data']
         ]);
-    } else {
-        echo json_encode([
-            'ok' => false,
-            'error' => $result['data']['Message'] ?? 'Unknown error'
-        ]);
+        exit;
     }
 
-
-    // If failed, extract best possible message
+    // If we got here, the hold failed - extract the error message
     $errorMsg = 'Failed to place hold';
-
-    if (isset($result['data']['Prompt']['Message'])) {
+    
+    if (isset($result['data']['Message'])) {
+        $errorMsg = $result['data']['Message'];
+    } elseif (isset($result['data']['Prompt']['Message'])) {
         $errorMsg = $result['data']['Prompt']['Message'];
     } elseif (isset($result['data']['InformationMessages'][0]['Message'])) {
         $errorMsg = $result['data']['InformationMessages'][0]['Message'];
@@ -107,7 +110,6 @@ try {
     exit;
 
 } catch (Exception $e) {
-
     http_response_code(500);
     echo json_encode([
         'ok' => false,
