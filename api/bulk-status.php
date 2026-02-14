@@ -46,25 +46,16 @@ try {
         $cachedData = json_decode(file_get_contents($cacheFile), true);
         
         // Check if statuses is a sequential numeric array (wrong format)
-        // Barcodes stored as integers are OK, but [0,1,2,3] is wrong
+        // DISABLED FOR NOW - just log warnings instead of deleting
         if (isset($cachedData['statuses']) && is_array($cachedData['statuses']) && !empty($cachedData['statuses'])) {
             $keys = array_keys($cachedData['statuses']);
             // Check if it's a sequential array starting at 0
             if ($keys === range(0, count($keys) - 1)) {
                 // Wrong format - it's a sequential numeric array [0,1,2,3...]
-                error_log("WARNING: Cache has wrong format (sequential numeric array), needs rebuild");
-                // Delete bad cache and start fresh
-                unlink($cacheFile);
-                
-                echo json_encode([
-                    'ok' => true,
-                    'statuses' => new stdClass(),
-                    'checked' => 0,
-                    'timestamp' => time(),
-                    'cached' => false,
-                    'message' => 'Cache format error, rebuilding...'
-                ]);
-                exit;
+                error_log("WARNING: Cache has wrong format (sequential numeric array) - but NOT deleting for debugging");
+                // COMMENTED OUT: unlink($cacheFile);
+            } else {
+                error_log("Cache format check: OK (has " . count($keys) . " items with barcode keys)");
             }
         }
         
