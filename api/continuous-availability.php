@@ -65,10 +65,18 @@ try {
     $batchStatuses = $api->bulkItemAvailability($batch, 5);
     
     if ($batchStatuses['ok']) {
-        // Merge with existing cache
+        // Merge with existing cache - ensure it's an associative array
+        if (!isset($cache['statuses']) || !is_array($cache['statuses'])) {
+            $cache['statuses'] = [];
+        }
         $cache['statuses'] = array_merge($cache['statuses'], $batchStatuses['data']);
         $cache['lastUpdated'] = date('Y-m-d H:i:s');
         $cache['timestamp'] = time();
+        
+        // Ensure we have at least one entry to prevent empty array encoding
+        if (empty($cache['statuses'])) {
+            $cache['statuses'] = new stdClass();
+        }
         
         // Save cache
         file_put_contents($cacheFile, json_encode($cache));
