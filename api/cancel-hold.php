@@ -22,10 +22,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'DELETE') {
 
 require_once __DIR__ . '/polaris.php';
 
+// Enable error logging
+error_log("Cancel hold API called at " . date('Y-m-d H:i:s'));
+
 $input = json_decode(file_get_contents('php://input'), true);
+error_log("Cancel hold input: " . print_r($input, true));
 
 $holdRequestId = $input['holdRequestId'] ?? null;
 $patronBarcode = $input['patronBarcode'] ?? null;
+
+error_log("Hold Request ID: $holdRequestId, Patron Barcode: $patronBarcode");
 
 if (empty($holdRequestId)) {
     http_response_code(400);
@@ -54,17 +60,21 @@ try {
     
     // Cancel the hold
     $result = $api->cancelHold($holdRequestId, $patronId);
+    error_log("Cancel hold result: " . print_r($result, true));
     
     if ($result['ok']) {
+        error_log("Hold cancelled successfully");
         echo json_encode([
             'ok' => true,
             'message' => 'Hold cancelled successfully'
         ]);
     } else {
+        error_log("Cancel hold failed: " . ($result['error'] ?? 'Unknown'));
         http_response_code(400);
         echo json_encode([
             'ok' => false,
-            'error' => $result['error'] ?? 'Failed to cancel hold'
+            'error' => $result['error'] ?? 'Failed to cancel hold',
+            'details' => $result
         ]);
     }
     
