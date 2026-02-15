@@ -174,38 +174,49 @@ if ($method === 'GET') {
         $movie['available'] = false;
         $debug = [];
         
-        if (loadPolaris()) {
+        if (loadPolaris() && isset($movie['bibRecordId']) && $movie['bibRecordId']) {
             try {
                 $api = new PolarisAPI();
                 
                 $debug['barcode'] = $barcode;
-                $debug['bibRecordId'] = $movie['bibRecordId'] ?? 'NONE';
+                $debug['bibRecordId'] = $movie['bibRecordId'];
                 
-                // Use bulkItemAvailability with a single-item array
-                $result = $api->bulkItemAvailability([$movie], 1);
+                // Direct API call to bib availability
+                $bibId = $movie['bibRecordId'];
+                $path = "polaris/699/3073/bibliographicrecords/{$bibId}/availability?nofilter=true";
+                $result = $api->apiRequest('GET', $path);
                 
+                $debug['apiPath'] = $path;
                 $debug['apiResult'] = $result;
-                $debug['resultKeys'] = array_keys($result['data'] ?? []);
                 
-                if ($result['ok'] && isset($result['data'][$barcode])) {
-                    // Found in results
-                    $statusData = $result['data'][$barcode];
-                    $movie['status'] = $statusData['status'];
-                    $movie['available'] = $statusData['available'];
-                    $movie['availableCount'] = $statusData['availableCount'] ?? 0;
-                    $movie['totalCount'] = $statusData['totalCount'] ?? 0;
-                    $debug['found'] = true;
+                if ($result['ok'] && isset($result['data']['Details'])) {
+                    // Sum all branches
+                    $totalAvailable = 0;
+                    $totalCount = 0;
+                    
+                    foreach ($result['data']['Details'] as $branch) {
+                        $totalAvailable += $branch['AvailableCount'];
+                        $totalCount += $branch['TotalCount'];
+                    }
+                    
+                    $debug['totalAvailable'] = $totalAvailable;
+                    $debug['totalCount'] = $totalCount;
+                    
+                    $movie['available'] = $totalAvailable > 0;
+                    $movie['status'] = $totalAvailable > 0 ? 'Available' : 'Checked Out';
+                    $movie['availableCount'] = $totalAvailable;
+                    $movie['totalCount'] = $totalCount;
                 } else {
-                    $movie['status'] = 'Unknown';
-                    $debug['found'] = false;
+                    $movie['status'] = 'API Error';
+                    $debug['error'] = $result['error'] ?? 'No details in response';
                 }
             } catch (Exception $e) {
-                $movie['status'] = 'Error';
+                $movie['status'] = 'Error: ' . $e->getMessage();
                 $debug['exception'] = $e->getMessage();
             }
         } else {
-            $movie['status'] = 'API unavailable';
-            $debug['polarisLoaded'] = false;
+            $movie['status'] = 'No Bib Record';
+            $debug['noBibRecord'] = true;
         }
         
         $movie['_debug'] = $debug;
