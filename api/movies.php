@@ -181,42 +181,47 @@ if ($method === 'GET') {
                 $debug['barcode'] = $barcode;
                 $debug['bibRecordId'] = $movie['bibRecordId'];
                 
-                // Direct API call to bib availability
-                $bibId = $movie['bibRecordId'];
-                $path = "polaris/699/3073/bibliographicrecords/{$bibId}/availability?nofilter=true";
-                $result = $api->apiRequest('GET', $path);
+                // Call bulkItemAvailability which handles auth internally
+                $result = $api->bulkItemAvailability([$movie], 1);
                 
-                $debug['apiPath'] = $path;
-                $debug['apiResult'] = $result;
+                $debug['bulkResult'] = $result;
                 
-                if ($result['ok'] && isset($result['data']['Details'])) {
-                    // Sum all branches
-                    $totalAvailable = 0;
-                    $totalCount = 0;
+                if ($result['ok']) {
+                    $statusData = $result['data'] ?? [];
+                    $debug['statusDataKeys'] = array_keys($statusData);
+                    $debug['statusData'] = $statusData;
                     
-                    foreach ($result['data']['Details'] as $branch) {
-                        $totalAvailable += $branch['AvailableCount'];
-                        $totalCount += $branch['TotalCount'];
+                    // The key should be the barcode
+                    if (isset($statusData[$barcode])) {
+                        $itemStatus = $statusData[$barcode];
+                        $movie['status'] = $itemStatus['status'] ?? 'Unknown';
+                        $movie['available'] = $itemStatus['available'] ?? false;
+                        $movie['availableCount'] = $itemStatus['availableCount'] ?? 0;
+                        $movie['totalCount'] = $itemStatus['totalCount'] ?? 0;
+                        $debug['itemStatus'] = $itemStatus;
+                    } else {
+                        $movie['status'] = 'Barcode not in results';
+                        $debug['expectedBarcode'] = $barcode;
                     }
-                    
-                    $debug['totalAvailable'] = $totalAvailable;
-                    $debug['totalCount'] = $totalCount;
-                    
-                    $movie['available'] = $totalAvailable > 0;
-                    $movie['status'] = $totalAvailable > 0 ? 'Available' : 'Checked Out';
-                    $movie['availableCount'] = $totalAvailable;
-                    $movie['totalCount'] = $totalCount;
                 } else {
-                    $movie['status'] = 'API Error';
-                    $debug['error'] = $result['error'] ?? 'No details in response';
+                    $movie['status'] = 'Bulk check failed';
+                    $debug['bulkError'] = $result['error'] ?? 'Unknown error';
                 }
             } catch (Exception $e) {
-                $movie['status'] = 'Error: ' . $e->getMessage();
+                $movie['status'] = 'Exception: ' . $e->getMessage();
                 $debug['exception'] = $e->getMessage();
+                $debug['trace'] = $e->getTraceAsString();
             }
         } else {
-            $movie['status'] = 'No Bib Record';
-            $debug['noBibRecord'] = true;
+            if (!loadPolaris()) {
+                $movie['status'] = 'Polaris class not loaded';
+            } elseif (!isset($movie['bibRecordId'])) {
+                $movie['status'] = 'No bibRecordId';
+            } else {
+                $movie['status'] = 'Unknown issue';
+            }
+            $debug['polarisLoaded'] = loadPolaris();
+            $debug['hasBibId'] = isset($movie['bibRecordId']);
         }
         
         $movie['_debug'] = $debug;
