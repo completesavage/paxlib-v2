@@ -31,8 +31,20 @@ class PolarisAPI {
     public function authenticate() {
         if ($this->accessToken) return true;
         
+        // Debug logging
+        error_log("PolarisAPI: Attempting authentication");
+        error_log("PolarisAPI: Username set: " . (empty($this->username) ? 'NO' : 'YES'));
+        error_log("PolarisAPI: Password set: " . (empty($this->password) ? 'NO' : 'YES'));
+        
+        if (empty($this->username) || empty($this->password)) {
+            error_log("PolarisAPI: Missing credentials!");
+            return false;
+        }
+        
         $authUrl = "{$this->baseUrl}/api/v1/{$this->langCode}/{$this->siteId}/authentication/staffuser";
         $basicToken = base64_encode($this->username . ':' . $this->password);
+        
+        error_log("PolarisAPI: Auth URL: $authUrl");
         
         $result = $this->doRequest('POST', $authUrl, [
             "Authorization: Basic $basicToken",
@@ -40,14 +52,23 @@ class PolarisAPI {
             "Content-Length: 0"
         ], '');
         
-        if (!$result['ok']) return false;
+        error_log("PolarisAPI: Auth result ok: " . ($result['ok'] ? 'true' : 'false'));
+        if (!$result['ok']) {
+            error_log("PolarisAPI: Auth failed: " . ($result['error'] ?? 'unknown'));
+            return false;
+        }
         
         $data = $result['data'];
-        if (!isset($data['AccessToken'])) return false;
+        if (!isset($data['AccessToken'])) {
+            error_log("PolarisAPI: No AccessToken in response");
+            return false;
+        }
         
         $this->siteDomain = $data['SiteDomain'];
         $this->accessToken = $data['AccessToken'];
         $this->accessSecret = $data['AccessSecret'];
+        
+        error_log("PolarisAPI: Authentication successful!");
         
         return true;
     }
