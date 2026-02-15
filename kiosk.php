@@ -437,6 +437,59 @@ body {
 .toast.success { background: #2e7d32; }
 .toast.error { background: #d32f2f; }
 
+/* Patron Status Bar */
+.patron-status-bar {
+  background: linear-gradient(to bottom, #f9f9f9, #f0f0f0);
+  border-bottom: 3px solid #2e7d32;
+  padding: 14px 24px;
+  display: none;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 17px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.patron-status-bar.visible { display: flex; }
+.patron-info { 
+  display: flex; 
+  gap: 35px; 
+  align-items: center; 
+}
+.patron-info-item { 
+  display: flex; 
+  align-items: center; 
+  gap: 10px;
+  font-weight: 600;
+}
+.patron-info-item.warning { 
+  color: #d32f2f; 
+  font-weight: 700;
+  animation: pulse 2s infinite;
+}
+.patron-info-item.good { color: #2e7d32; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.checkout-counter {
+  font-size: 20px;
+  font-weight: 700;
+  padding: 10px 20px;
+  background: white;
+  border-radius: 8px;
+  border: 3px solid #2e7d32;
+  color: #2e7d32;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.checkout-counter.warning {
+  border-color: #ff9800;
+  color: #ff9800;
+}
+.checkout-counter.blocked {
+  border-color: #d32f2f;
+  color: #d32f2f;
+  background: #ffebee;
+}
+
 /* Loading spinner */
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -541,6 +594,23 @@ body {
   <button class="nav-btn" data-tab="search">Search</button>
   <button class="nav-btn" data-tab="holds" id="btnHoldsTab" style="display: none;">My Holds</button>
 </nav>
+
+<!-- Patron Status Bar -->
+<div class="patron-status-bar" id="patronStatusBar">
+  <div class="patron-info">
+    <div class="patron-info-item" id="patronNameDisplay">
+      <span>👤</span>
+      <span id="patronName">Guest</span>
+    </div>
+    <div class="patron-info-item" id="patronFinesDisplay">
+      <span>💰</span>
+      <span>Fines: <strong id="patronFines">$0.00</strong></span>
+    </div>
+  </div>
+  <div class="checkout-counter" id="checkoutCounter">
+    DVDs Checked Out: <span id="dvdCount">0</span>/5
+  </div>
+</div>
 
 <!-- Filter Bar -->
 <div class="filter-bar">
@@ -708,6 +778,7 @@ let movieStatuses = {}; // barcode => {status, available}
 let currentFilter = 'all'; // 'all' or 'available'
 let statusesLoaded = false;
 let currentUser = null;
+let patronStatus = null; // Stores fines, checkout counts, blocking info
 let currentMovie = null;
 let idleTimer = null;
 let warnInterval = null;
@@ -1118,6 +1189,7 @@ async function doLogin() {
   }
 
   try {
+    // First get basic patron info
     const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`);
     const data = await res.json();
 
@@ -1129,6 +1201,46 @@ async function doLogin() {
     }
 
     currentUser = data.patron;
+
+    // Now check patron status (fines, checkouts)
+    const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(barcode)}`);
+    const statusData = await statusRes.json();
+    
+    if (statusData.ok) {
+      patronStatus = statusData;
+      
+      // Update patron status bar
+      $('#patronName').textContent = statusData.patronName;
+      $('#patronFines').textContent = '$' + statusData.fines.total.toFixed(2);
+      $('#dvdCount').textContent = statusData.checkouts.dvds;
+      
+      // Apply warning styling
+      const finesDisplay = $('#patronFinesDisplay');
+      finesDisplay.classList.remove('warning', 'good');
+      if (statusData.fines.total > 5) {
+        finesDisplay.classList.add('warning');
+      } else if (statusData.fines.total > 0) {
+        finesDisplay.classList.add('warning');
+      } else {
+        finesDisplay.classList.add('good');
+      }
+      
+      const counter = $('#checkoutCounter');
+      counter.classList.remove('warning', 'blocked');
+      if (statusData.checkouts.dvds >= 5) {
+        counter.classList.add('blocked');
+      } else if (statusData.checkouts.dvds >= 4) {
+        counter.classList.add('warning');
+      }
+      
+      // Show patron status bar
+      $('#patronStatusBar').classList.add('visible');
+      
+      // Show blocking message if needed
+      if (!statusData.canCheckout && statusData.blockReasons.length > 0) {
+        toast('⚠️ ' + statusData.blockReasons.join('. '), 'error');
+      }
+    }
 
     $('#userName').textContent = `Hello, ${currentUser.name}!`;
     $('#userCard').textContent = `Card: ${currentUser.barcode}`;
@@ -1153,10 +1265,12 @@ async function doLogin() {
 
 function doLogout() {
   currentUser = null;
+  patronStatus = null;
   $('#userInfo').classList.remove('visible');
   $('#btnLogin').style.display = 'block';
   $('#btnLogout').style.display = 'none';
   $('#btnHoldsTab').style.display = 'none'; // Hide holds tab
+  $('#patronStatusBar').classList.remove('visible'); // Hide status bar
   
   // Switch back to browse tab if on holds
   const activeBtn = document.querySelector('.nav-btn.active');
@@ -1316,6 +1430,16 @@ async function requestMovie(type) {
     return;
   }
   
+  // PHASE 1: Check if patron can checkout
+  if (patronStatus && !patronStatus.canCheckout && type === 'now') {
+    let message = '⚠️ Cannot check out DVD. ';
+    if (patronStatus.blockReasons && patronStatus.blockReasons.length > 0) {
+      message += patronStatus.blockReasons.join('. ');
+    }
+    toast(message, 'error');
+    return;
+  }
+  
   try {
     const reqData = {
       movie: {
@@ -1396,6 +1520,28 @@ async function requestMovie(type) {
     }
     
     closeMovie();
+    
+    // PHASE 1: Refresh patron status after checkout
+    if (type === 'now' && currentUser) {
+      try {
+        const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(currentUser.barcode)}`);
+        const statusData = await statusRes.json();
+        if (statusData.ok) {
+          patronStatus = statusData;
+          $('#dvdCount').textContent = statusData.checkouts.dvds;
+          
+          const counter = $('#checkoutCounter');
+          counter.classList.remove('warning', 'blocked');
+          if (statusData.checkouts.dvds >= 5) {
+            counter.classList.add('blocked');
+          } else if (statusData.checkouts.dvds >= 4) {
+            counter.classList.add('warning');
+          }
+        }
+      } catch (e) {
+        console.error('Failed to refresh patron status:', e);
+      }
+    }
     
     if (type === 'hold') {
       $('#confirmIcon').textContent = '📌';
