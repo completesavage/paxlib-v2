@@ -104,6 +104,44 @@ class PolarisAPI {
     }
     
     /**
+     * Get bibliographic record availability by ID
+     * Returns availability across all branches
+     */
+    public function getBibAvailability($bibRecordId) {
+        $path = "polaris/{$this->orgId}/{$this->workstationId}/bibliographicrecords/{$bibRecordId}/availability?nofilter=true";
+        
+        error_log("getBibAvailability: Checking bib ID $bibRecordId");
+        
+        $result = $this->apiRequest('GET', $path);
+        
+        error_log("getBibAvailability: API result: " . print_r($result, true));
+        
+        if ($result['ok'] && isset($result['data']['Details'])) {
+            // Sum all branches
+            $totalAvailable = 0;
+            $totalCount = 0;
+            
+            foreach ($result['data']['Details'] as $branch) {
+                $totalAvailable += $branch['AvailableCount'];
+                $totalCount += $branch['TotalCount'];
+            }
+            
+            return [
+                'ok' => true,
+                'available' => $totalAvailable > 0,
+                'availableCount' => $totalAvailable,
+                'totalCount' => $totalCount,
+                'status' => $totalAvailable > 0 ? 'Available' : 'Checked Out'
+            ];
+        }
+        
+        return [
+            'ok' => false,
+            'error' => $result['error'] ?? 'No details in response'
+        ];
+    }
+    
+    /**
      * Bulk check availability using bibliographic record API
      * Much more efficient - checks entire bib record availability at once
      */
