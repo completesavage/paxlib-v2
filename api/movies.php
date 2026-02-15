@@ -172,13 +172,20 @@ if ($method === 'GET') {
         // ALWAYS check real-time availability from Polaris when movie is clicked
         $movie['status'] = 'Checking...';
         $movie['available'] = false;
+        $debug = [];
         
         if (loadPolaris()) {
             try {
                 $api = new PolarisAPI();
                 
+                $debug['barcode'] = $barcode;
+                $debug['bibRecordId'] = $movie['bibRecordId'] ?? 'NONE';
+                
                 // Use bulkItemAvailability with a single-item array
                 $result = $api->bulkItemAvailability([$movie], 1);
+                
+                $debug['apiResult'] = $result;
+                $debug['resultKeys'] = array_keys($result['data'] ?? []);
                 
                 if ($result['ok'] && isset($result['data'][$barcode])) {
                     // Found in results
@@ -187,18 +194,21 @@ if ($method === 'GET') {
                     $movie['available'] = $statusData['available'];
                     $movie['availableCount'] = $statusData['availableCount'] ?? 0;
                     $movie['totalCount'] = $statusData['totalCount'] ?? 0;
+                    $debug['found'] = true;
                 } else {
-                    // Not found or error
-                    error_log("bulkItemAvailability failed for $barcode: " . json_encode($result));
                     $movie['status'] = 'Unknown';
+                    $debug['found'] = false;
                 }
             } catch (Exception $e) {
-                error_log("Error checking availability for $barcode: " . $e->getMessage());
                 $movie['status'] = 'Error';
+                $debug['exception'] = $e->getMessage();
             }
         } else {
             $movie['status'] = 'API unavailable';
+            $debug['polarisLoaded'] = false;
         }
+        
+        $movie['_debug'] = $debug;
         
         echo json_encode(['ok' => true, 'movie' => $movie]);
         exit;
