@@ -437,6 +437,17 @@ body {
 .toast.success { background: #2e7d32; }
 .toast.error { background: #d32f2f; }
 
+/* Loading spinner */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.status-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+  margin-right: 6px;
+}
+
 /* Holds display */
 .hold-card {
   background: white;
@@ -619,7 +630,10 @@ body {
         <div class="modal-title" id="modalTitle">Movie Title</div>
         <div>
           <span class="badge badge-rating" id="modalRating">PG</span>
-          <span class="badge badge-status" id="modalStatus">Checking...</span>
+          <span class="badge badge-status" id="modalStatus">
+            <span class="status-spinner" style="display:none;">⏳</span>
+            <span class="status-text">Checking...</span>
+          </span>
         </div>
         <div class="detail-row"><span class="detail-label">Call #:</span> <span id="modalCall">—</span></div>
         <div class="detail-row"><span class="detail-label">Barcode:</span> <span id="modalBarcode">—</span></div>
@@ -985,7 +999,12 @@ async function openMovie(barcode) {
   $('#modalBarcode').textContent = barcode;
   $('#modalCall').textContent = currentMovie.callNumber || '—';
   $('#modalLocation').textContent = currentMovie.location || 'DVD Section';
-  $('#modalStatus').textContent = 'Checking...';
+  
+  // Show spinner while checking
+  const spinner = $('#modalStatus .status-spinner');
+  const statusText = $('#modalStatus .status-text');
+  spinner.style.display = 'inline-block';
+  statusText.textContent = 'Checking availability...';
   $('#modalStatus').className = 'badge badge-status';
   
   // Hide both buttons initially while checking
@@ -1005,6 +1024,9 @@ async function openMovie(barcode) {
     console.log('Available:', data.movie?.available);
     console.log('Debug info:', data.movie?._debug);
     
+    // Hide spinner
+    spinner.style.display = 'none';
+    
     if (data.ok && data.movie) {
       const m = data.movie;
       if (m.cover) $('#modalPoster').src = m.cover;
@@ -1017,7 +1039,7 @@ async function openMovie(barcode) {
       
       console.log('Final status:', status, 'isAvailable:', isAvailable);
       
-      $('#modalStatus').textContent = status;
+      statusText.textContent = status;
       $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
       
       // Show appropriate buttons based on availability
@@ -1036,6 +1058,9 @@ async function openMovie(barcode) {
     }
   } catch (e) {
     console.error('Failed to load movie details:', e);
+    // Hide spinner and show error
+    spinner.style.display = 'none';
+    statusText.textContent = 'Error checking status';
     // On error, only show Place Hold to be safe
     $('#btnRequestNow').style.display = 'none';
     $('#btnPlaceHold').style.display = 'block';
