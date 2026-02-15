@@ -887,7 +887,10 @@ function card(m) {
   
   return `
     <div class="movie-card${unavailableClass}" data-barcode="${m.barcode}">
-      <img class="movie-poster" src="${coverSrc}" onerror="this.src='${NO_COVER}'" loading="lazy">
+      <img class="movie-poster" src="${coverSrc}" 
+           onerror="this.src='${NO_COVER}'" 
+           onload="if(this.naturalWidth <= 2 && this.naturalHeight <= 2) this.src='${NO_COVER}'"
+           loading="lazy">
       <div class="movie-info">
         <div class="movie-title">${esc(m.title)}</div>
         ${m.rating ? `<span class="movie-rating">${esc(m.rating)}</span>` : ''}
@@ -994,7 +997,15 @@ async function openMovie(barcode) {
   currentMovie = movieMap[barcode] || { barcode };
   
   $('#modalTitle').textContent = currentMovie.title || 'Loading...';
-  $('#modalPoster').src = currentMovie.cover || NO_COVER;
+  const modalPoster = $('#modalPoster');
+  modalPoster.src = currentMovie.cover || NO_COVER;
+  // Check for 1x1 pixel placeholders
+  modalPoster.onload = function() {
+    if (this.naturalWidth <= 2 && this.naturalHeight <= 2) {
+      this.src = NO_COVER;
+    }
+  };
+  
   $('#modalRating').textContent = currentMovie.rating || 'NR';
   $('#modalBarcode').textContent = barcode;
   $('#modalCall').textContent = currentMovie.callNumber || '—';
@@ -1029,7 +1040,14 @@ async function openMovie(barcode) {
     
     if (data.ok && data.movie) {
       const m = data.movie;
-      if (m.cover) $('#modalPoster').src = m.cover;
+      if (m.cover) {
+        modalPoster.src = m.cover;
+        modalPoster.onload = function() {
+          if (this.naturalWidth <= 2 && this.naturalHeight <= 2) {
+            this.src = NO_COVER;
+          }
+        };
+      }
       $('#modalCall').textContent = m.callNumber || '—';
       $('#modalLocation').textContent = m.location || 'DVD Section';
       
