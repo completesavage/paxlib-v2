@@ -12,7 +12,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
-
+require_once __DIR__ . '/../config.php';
+error_log("movies.php: config loaded, username=" . (isset($username) ? 'SET' : 'NOT SET'));
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
