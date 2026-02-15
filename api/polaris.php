@@ -393,6 +393,79 @@ class PolarisAPI {
     }
     
     /**
+     * Get patron's current fines/fees
+     * Returns total amount owed
+     */
+    public function getPatronFines($patronId) {
+        $path = "polaris/{$this->orgId}/{$this->workstationId}/patrons/{$patronId}/account/outstanding";
+        $result = $this->apiRequest('GET', $path);
+        
+        if ($result['ok'] && isset($result['data'])) {
+            $data = $result['data'];
+            
+            // Calculate total outstanding
+            $totalOwed = 0;
+            if (isset($data['ChargeBalance'])) {
+                $totalOwed += floatval($data['ChargeBalance']);
+            }
+            if (isset($data['DepositBalance'])) {
+                $totalOwed += floatval($data['DepositBalance']);
+            }
+            
+            return [
+                'ok' => true,
+                'totalOwed' => $totalOwed,
+                'chargeBalance' => floatval($data['ChargeBalance'] ?? 0),
+                'depositBalance' => floatval($data['DepositBalance'] ?? 0),
+                'hasOutstanding' => $totalOwed > 0,
+                'canCheckout' => $totalOwed <= 5.00  // $5 limit
+            ];
+        }
+        
+        return [
+            'ok' => false,
+            'error' => 'Failed to get patron fines',
+            'details' => $result
+        ];
+    }
+    
+    /**
+     * Get patron's current checkouts
+     * Returns count and list of checked out items
+     */
+    public function getPatronCheckouts($patronId) {
+        $path = "polaris/{$this->orgId}/{$this->workstationId}/patrons/{$patronId}/itemsout/all";
+        $result = $this->apiRequest('GET', $path);
+        
+        if ($result['ok'] && isset($result['data']['PatronItemsOutGetRows'])) {
+            $items = $result['data']['PatronItemsOutGetRows'];
+            
+            // Count DVD checkouts
+            $dvdCount = 0;
+            foreach ($items as $item) {
+                $materialType = strtolower($item['FormatDescription'] ?? '');
+                if (strpos($materialType, 'dvd') !== false) {
+                    $dvdCount++;
+                }
+            }
+            
+            return [
+                'ok' => true,
+                'totalCheckouts' => count($items),
+                'dvdCheckouts' => $dvdCount,
+                'canCheckoutDVD' => $dvdCount < 5,  // 5 DVD limit
+                'items' => $items
+            ];
+        }
+        
+        return [
+            'ok' => false,
+            'error' => 'Failed to get patron checkouts',
+            'details' => $result
+        ];
+    }
+    
+    /**
      * Place a local hold request with automatic handling of conversation steps
      */
     public function placeLocalHold($patronId, $bibRecordId, $pickupBranchId, $origin = 2) {
