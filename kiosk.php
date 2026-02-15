@@ -501,6 +501,66 @@ body {
   margin-right: 6px;
 }
 
+/* Full-screen loading overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  flex-direction: column;
+  gap: 20px;
+}
+.loading-overlay.visible {
+  display: flex;
+}
+.loading-spinner {
+  width: 80px;
+  height: 80px;
+  border: 8px solid #f3f3f3;
+  border-top: 8px solid #2e7d32;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+.loading-text {
+  color: white;
+  font-size: 24px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 80%;
+}
+.loading-subtext {
+  color: #ccc;
+  font-size: 18px;
+  text-align: center;
+}
+
+/* Button loading states */
+.btn.loading {
+  position: relative;
+  color: transparent;
+  pointer-events: none;
+}
+.btn.loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 50%;
+  left: 50%;
+  margin-left: -10px;
+  margin-top: -10px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 0.6s linear infinite;
+}
+
 /* Holds display */
 .hold-card {
   background: white;
@@ -772,6 +832,26 @@ const NO_COVER = '/img/no-cover.svg';
 const TIMEOUT_IDLE = <?php echo $timeout * 1000; ?>;
 const TIMEOUT_WARN = <?php echo $warning * 1000; ?>;
 
+// Helper functions
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const esc = str => {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+};
+
+// Loading overlay helpers
+function showLoading(text = 'Loading...', subtext = '') {
+  $('#loadingText').textContent = text;
+  $('#loadingSubtext').textContent = subtext;
+  $('#loadingOverlay').classList.add('visible');
+}
+
+function hideLoading() {
+  $('#loadingOverlay').classList.remove('visible');
+}
+
 let movies = [];
 let movieMap = {};
 let movieStatuses = {}; // barcode => {status, available}
@@ -782,9 +862,6 @@ let patronStatus = null; // Stores fines, checkout counts, blocking info
 let currentMovie = null;
 let idleTimer = null;
 let warnInterval = null;
-
-const $ = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
 
 // Initialize
 async function init() {
@@ -1188,12 +1265,15 @@ async function doLogin() {
     return;
   }
 
+  showLoading('Logging in...', 'Please wait');
+
   try {
     // First get basic patron info
     const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`);
     const data = await res.json();
 
     if (!data.ok || !data.patron) {
+      hideLoading();
       $('#loginError').textContent = 'Card not found';
       $('#loginError').classList.add('visible');
       toast('Invalid library card', 'error');
@@ -1205,6 +1285,8 @@ async function doLogin() {
     // Now check patron status (fines, checkouts)
     const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(barcode)}`);
     const statusData = await statusRes.json();
+    
+    hideLoading();
     
     if (statusData.ok) {
       patronStatus = statusData;
@@ -1254,6 +1336,7 @@ async function doLogin() {
     resetIdleTimer();
 
   } catch (e) {
+    hideLoading();
     console.error("Login API error:", e);
 
     $('#loginError').textContent = 'Login system unavailable';
@@ -1375,6 +1458,8 @@ function renderHold(hold) {
 async function cancelHold(holdRequestId) {
   if (!confirm('Are you sure you want to cancel this hold?')) return;
   
+  showLoading('Cancelling hold...', 'Please wait');
+  
   try {
     console.log('Cancelling hold:', holdRequestId, 'for patron:', currentUser.barcode);
     
@@ -1397,11 +1482,14 @@ async function cancelHold(holdRequestId) {
       data = JSON.parse(responseText);
     } catch (e) {
       console.error('Failed to parse cancel response:', e);
+      hideLoading();
       toast('Cancel failed (invalid response)', 'error');
       return;
     }
     
     console.log('Cancel response data:', data);
+    
+    hideLoading();
     
     if (data.ok) {
       toast('Hold cancelled successfully', 'success');
@@ -1410,6 +1498,7 @@ async function cancelHold(holdRequestId) {
       toast('Failed to cancel: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (e) {
+    hideLoading();
     console.error('Cancel hold error:', e);
     toast('Failed to cancel hold', 'error');
   }
@@ -1440,6 +1529,13 @@ async function requestMovie(type) {
     return;
   }
   
+  // Show loading based on type
+  if (type === 'hold') {
+    showLoading('Placing hold...', 'This may take a few moments');
+  } else {
+    showLoading('Submitting request...', 'Please wait');
+  }
+  
   try {
     const reqData = {
       movie: {
@@ -1466,6 +1562,7 @@ async function requestMovie(type) {
     const data = await res.json();
     
     if (!data.ok) {
+      hideLoading();
       toast('Request failed: ' + (data.error || 'Unknown error'), 'error');
       return;
     }
@@ -1499,6 +1596,7 @@ async function requestMovie(type) {
           holdData = JSON.parse(responseText);
         } catch (parseError) {
           console.error('Failed to parse response as JSON:', parseError);
+          hideLoading();
           toast('Hold system error (invalid response)', 'error');
           return;
         }
@@ -1507,6 +1605,7 @@ async function requestMovie(type) {
         
         if (!holdRes.ok || !holdData.ok) {
           console.error('Hold placement failed:', holdData);
+          hideLoading();
           toast('Hold failed: ' + (holdData.error || 'Unknown error'), 'error');
           return;
         }
@@ -1514,11 +1613,13 @@ async function requestMovie(type) {
         console.log('Hold placed successfully:', holdData);
       } catch (e) {
         console.error('Polaris hold error:', e);
+        hideLoading();
         toast('Hold system unavailable', 'error');
         return;
       }
     }
     
+    hideLoading();
     closeMovie();
     
     // PHASE 1: Refresh patron status after checkout
@@ -1556,6 +1657,7 @@ async function requestMovie(type) {
     $('#confirmModal').classList.add('visible');
     
   } catch (e) {
+    hideLoading();
     console.error('Request error:', e);
     toast('Request failed', 'error');
   }
@@ -1683,5 +1785,12 @@ function esc(s) {
 // Start
 init();
 </script>
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text" id="loadingText">Loading...</div>
+  <div class="loading-subtext" id="loadingSubtext"></div>
+</div>
+
 </body>
 </html>
