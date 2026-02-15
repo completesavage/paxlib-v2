@@ -40,7 +40,9 @@ try {
     // Get patron info
     $patronResult = $api->getPatronByBarcode($barcode);
     
-    if (!$patronResult['ok']) {
+    error_log("patron-status: getPatronByBarcode result: " . print_r($patronResult, true));
+    
+    if (!$patronResult['ok'] || !isset($patronResult['data'])) {
         http_response_code(404);
         echo json_encode([
             'ok' => false,
@@ -52,38 +54,57 @@ try {
     $patronData = $patronResult['data'];
     $patronId = $patronData['PatronID'];
     
-    // Get fines
-    $fines = $api->getPatronFines($patronId);
+    // Get registration data for name
+    $reg = $patronData['Registration'] ?? [];
+    $firstName = $reg['NameFirst'] ?? '';
+    $lastName = $reg['NameLast'] ?? '';
+    $displayName = trim("$firstName $lastName");
+    if (empty($displayName)) {
+        $displayName = $reg['PatronFullName'] ?? $patronData['Barcode'] ?? $barcode;
+    }
     
-    // Get checkouts
+    // Get fines from the patron data itself
+    $chargesAmount = floatval($patronData['ChargesAmount'] ?? 0);
+    $creditsAmount = floatval($patronData['CreditsAmount'] ?? 0);
+    $totalOwed = $chargesAmount - $creditsAmount;
+    
+    error_log("patron-status: Fines - Charges: $chargesAmount, Credits: $creditsAmount, Total: $totalOwed");
+    
+    // Get checkouts (will still make API call for this)
     $checkouts = $api->getPatronCheckouts($patronId);
+    
+    error_log("patron-status: Checkouts result: " . print_r($checkouts, true));
     
     // Determine if patron can checkout
     $canCheckout = true;
     $blockReasons = [];
     
-    if ($fines['ok'] && !$fines['canCheckout']) {
+    if ($totalOwed > 5.00) {
         $canCheckout = false;
         $blockReasons[] = 'Fines over $5.00 - Please visit front desk';
     }
     
-    if ($checkouts['ok'] && !$checkouts['canCheckoutDVD']) {
-        $canCheckout = false;
-        $blockReasons[] = 'DVD checkout limit reached (5 DVDs)';
+    $dvdCount = 0;
+    if ($checkouts['ok']) {
+        $dvdCount = $checkouts['dvdCheckouts'];
+        if ($dvdCount >= 5) {
+            $canCheckout = false;
+            $blockReasons[] = 'DVD checkout limit reached (5 DVDs)';
+        }
     }
     
     echo json_encode([
         'ok' => true,
         'patronId' => $patronId,
-        'patronName' => $patronData['DisplayName'] ?? 'Unknown',
+        'patronName' => $displayName,
         'fines' => [
-            'total' => $fines['totalOwed'] ?? 0,
-            'canCheckout' => $fines['canCheckout'] ?? true
+            'total' => $totalOwed,
+            'canCheckout' => $totalOwed <= 5.00
         ],
         'checkouts' => [
             'total' => $checkouts['totalCheckouts'] ?? 0,
-            'dvds' => $checkouts['dvdCheckouts'] ?? 0,
-            'canCheckoutDVD' => $checkouts['canCheckoutDVD'] ?? true
+            'dvds' => $dvdCount,
+            'canCheckoutDVD' => $dvdCount < 5
         ],
         'canCheckout' => $canCheckout,
         'blockReasons' => $blockReasons
@@ -91,6 +112,7 @@ try {
     
 } catch (Exception $e) {
     error_log("Exception in patron-status: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
     http_response_code(500);
     echo json_encode([
         'ok' => false,
