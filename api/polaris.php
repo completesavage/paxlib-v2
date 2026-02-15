@@ -19,10 +19,25 @@ class PolarisAPI {
     private $accessSecret;
     private $siteDomain;
     
+    private static $instance = null;
+    
     public function __construct() {
         global $username, $password;
         $this->username = $username;
         $this->password = $password;
+        
+        error_log("PolarisAPI __construct: username=" . ($this->username ? 'SET' : 'EMPTY') . ", password=" . ($this->password ? 'SET' : 'EMPTY'));
+    }
+    
+    /**
+     * Get singleton instance
+     */
+    public static function getInstance() {
+        if (self::$instance === null) {
+            error_log("PolarisAPI: Creating new singleton instance");
+            self::$instance = new self();
+        }
+        return self::$instance;
     }
     
     /**
