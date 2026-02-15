@@ -999,6 +999,12 @@ async function openMovie(barcode) {
     const res = await fetch(`api/movies.php?barcode=${encodeURIComponent(barcode)}`);
     const data = await res.json();
     
+    console.log('Movie API response:', data);
+    console.log('Movie object:', data.movie);
+    console.log('Status:', data.movie?.status);
+    console.log('Available:', data.movie?.available);
+    console.log('Debug info:', data.movie?._debug);
+    
     if (data.ok && data.movie) {
       const m = data.movie;
       if (m.cover) $('#modalPoster').src = m.cover;
@@ -1008,6 +1014,8 @@ async function openMovie(barcode) {
       const status = m.status || 'Unknown';
       // Use the 'available' boolean from API instead of parsing status string
       const isAvailable = m.available === true;
+      
+      console.log('Final status:', status, 'isAvailable:', isAvailable);
       
       $('#modalStatus').textContent = status;
       $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
