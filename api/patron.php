@@ -25,7 +25,8 @@ try {
     error_log("PolarisAPI response for barcode $barcode: " . print_r($result, true));
 
    if ($result['ok'] && isset($result['data']['Registration'])) {
-        $reg = $result['data']['Registration'];
+        $patron = $result['data'];
+        $reg = $patron['Registration'];
     
         $firstName = $reg['NameFirst'] ?? '';
         $lastName = $reg['NameLast'] ?? '';
