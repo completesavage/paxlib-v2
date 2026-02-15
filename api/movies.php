@@ -181,36 +181,23 @@ if ($method === 'GET') {
                 $debug['barcode'] = $barcode;
                 $debug['bibRecordId'] = $movie['bibRecordId'];
                 
-                // Call bulkItemAvailability which handles auth internally
-                $result = $api->bulkItemAvailability([$movie], 1);
+                // Use simple bib availability method
+                $result = $api->getBibAvailability($movie['bibRecordId']);
                 
-                $debug['bulkResult'] = $result;
+                $debug['bibAvailResult'] = $result;
                 
                 if ($result['ok']) {
-                    $statusData = $result['data'] ?? [];
-                    $debug['statusDataKeys'] = array_keys($statusData);
-                    $debug['statusData'] = $statusData;
-                    
-                    // The key should be the barcode
-                    if (isset($statusData[$barcode])) {
-                        $itemStatus = $statusData[$barcode];
-                        $movie['status'] = $itemStatus['status'] ?? 'Unknown';
-                        $movie['available'] = $itemStatus['available'] ?? false;
-                        $movie['availableCount'] = $itemStatus['availableCount'] ?? 0;
-                        $movie['totalCount'] = $itemStatus['totalCount'] ?? 0;
-                        $debug['itemStatus'] = $itemStatus;
-                    } else {
-                        $movie['status'] = 'Barcode not in results';
-                        $debug['expectedBarcode'] = $barcode;
-                    }
+                    $movie['status'] = $result['status'];
+                    $movie['available'] = $result['available'];
+                    $movie['availableCount'] = $result['availableCount'];
+                    $movie['totalCount'] = $result['totalCount'];
                 } else {
-                    $movie['status'] = 'Bulk check failed';
-                    $debug['bulkError'] = $result['error'] ?? 'Unknown error';
+                    $movie['status'] = 'API Error';
+                    $debug['error'] = $result['error'];
                 }
             } catch (Exception $e) {
                 $movie['status'] = 'Exception: ' . $e->getMessage();
                 $debug['exception'] = $e->getMessage();
-                $debug['trace'] = $e->getTraceAsString();
             }
         } else {
             if (!loadPolaris()) {
