@@ -176,7 +176,8 @@ if ($method === 'GET') {
         
         if (loadPolaris() && isset($movie['bibRecordId']) && $movie['bibRecordId']) {
             try {
-                $api = new PolarisAPI();
+                // Use singleton to reuse authenticated instance
+                $api = PolarisAPI::getInstance();
                 
                 $debug['barcode'] = $barcode;
                 $debug['bibRecordId'] = $movie['bibRecordId'];
