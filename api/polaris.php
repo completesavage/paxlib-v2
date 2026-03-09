@@ -93,7 +93,7 @@ class PolarisAPI {
      */
     public function apiRequest($method, $path, $body = null) {
         if (!$this->authenticate()) {
-            return ['ok' => false, 'error' => 'Authentication failed'];
+            return ['ok' => false, 'error' => 'Authentication failed', 'raw' => null];
         }
         
         $url = "{$this->baseUrl}/api/v1/{$this->langCode}/{$this->siteId}/" . ltrim($path, '/');
@@ -311,7 +311,7 @@ class PolarisAPI {
         $resultId = $this->apiRequest('GET', $pathId);
     
         if (!$resultId['ok'] || empty($resultId['data'])) {
-            return ['ok' => false, 'error' => 'Patron not found', 'raw' => $resultId['raw']];
+            return ['ok' => false, 'error' => 'Patron not found', 'raw' => $resultId['raw'] ?? null];
         }
     
         $patronId = is_array($resultId['data']) ? $resultId['data'][0] : $resultId['data'];
