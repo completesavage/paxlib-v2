@@ -153,11 +153,68 @@ body {
 }
 .search-input:focus { border-color: #2e7d32; }
 
+/* On-screen keyboard */
+#oskContainer {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #1a1a2e;
+  padding: 10px 8px 14px;
+  z-index: 9999;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+  border-top: 3px solid #2e7d32;
+}
+#oskContainer.visible { display: block; }
+.osk-row {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+.osk-key {
+  background: #2d2d44;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  min-width: 52px;
+  height: 52px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, transform 0.1s;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.osk-key:active, .osk-key.pressed {
+  background: #2e7d32;
+  transform: scale(0.93);
+}
+.osk-key.wide { min-width: 80px; font-size: 15px; }
+.osk-key.space { min-width: 260px; font-size: 14px; letter-spacing: 1px; }
+.osk-key.backspace { background: #4a2020; min-width: 80px; }
+.osk-key.backspace:active { background: #7d2e2e; }
+.osk-key.clear-btn { background: #3a3a20; min-width: 80px; font-size: 14px; }
+.osk-key.clear-btn:active { background: #6d6d2e; }
+
+@media (orientation: landscape) {
+  #oskContainer { display: none !important; }
+  .main.osk-open { height: calc(100vh - 190px); }
+}
+
 /* Main content */
 .main {
   height: calc(100vh - 190px);
   overflow-y: auto;
   padding: 20px 0;
+}
+.main.osk-open {
+  height: calc(100vh - 190px - 230px);
 }
 .section { display: none; }
 .section.active { display: block; }
@@ -686,6 +743,32 @@ body {
 
 <div class="search-bar" id="searchBar">
   <input type="text" class="search-input" id="searchInput" placeholder="Type a movie title...">
+</div>
+
+<!-- On-screen keyboard -->
+<div id="oskContainer">
+  <div class="osk-row">
+    <?php foreach(['Q','W','E','R','T','Y','U','I','O','P'] as $k): ?>
+    <button class="osk-key" data-key="<?= $k ?>"><?= $k ?></button>
+    <?php endforeach; ?>
+  </div>
+  <div class="osk-row">
+    <?php foreach(['A','S','D','F','G','H','J','K','L'] as $k): ?>
+    <button class="osk-key" data-key="<?= $k ?>"><?= $k ?></button>
+    <?php endforeach; ?>
+  </div>
+  <div class="osk-row">
+    <?php foreach(['Z','X','C','V','B','N','M'] as $k): ?>
+    <button class="osk-key" data-key="<?= $k ?>"><?= $k ?></button>
+    <?php endforeach; ?>
+    <button class="osk-key backspace" data-key="BACKSPACE">⌫</button>
+  </div>
+  <div class="osk-row">
+    <button class="osk-key clear-btn" data-key="CLEAR">Clear</button>
+    <button class="osk-key space" data-key="SPACE">SPACE</button>
+    <button class="osk-key wide" data-key="APOSTROPHE">'</button>
+    <button class="osk-key wide" data-key="COLON">:</button>
+  </div>
 </div>
 
 <main class="main">
@@ -1665,6 +1748,53 @@ async function requestMovie(type) {
 
 // Event setup
 function setupEvents() {
+  // On-screen keyboard setup (defined first so oskShow/oskHide are available)
+  const osk = $('#oskContainer');
+  function oskShow() { osk.classList.add('visible'); $('.main').classList.add('osk-open'); }
+  function oskHide() { osk.classList.remove('visible'); $('.main').classList.remove('osk-open'); }
+
+  // searchTimeout declared here so OSK handlers can use it
+  let searchTimeout;
+
+  $$('.osk-key').forEach(key => {
+    key.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      key.classList.add('pressed');
+      const k = key.dataset.key;
+      const input = $('#searchInput');
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      const val = input.value;
+      if (k === 'BACKSPACE') {
+        if (start !== end) {
+          input.value = val.slice(0, start) + val.slice(end);
+          input.setSelectionRange(start, start);
+        } else if (start > 0) {
+          input.value = val.slice(0, start - 1) + val.slice(end);
+          input.setSelectionRange(start - 1, start - 1);
+        }
+      } else if (k === 'CLEAR') {
+        input.value = '';
+      } else if (k === 'SPACE') {
+        input.value = val.slice(0, start) + ' ' + val.slice(end);
+        input.setSelectionRange(start + 1, start + 1);
+      } else if (k === 'APOSTROPHE') {
+        input.value = val.slice(0, start) + "'" + val.slice(end);
+        input.setSelectionRange(start + 1, start + 1);
+      } else if (k === 'COLON') {
+        input.value = val.slice(0, start) + ':' + val.slice(end);
+        input.setSelectionRange(start + 1, start + 1);
+      } else {
+        input.value = val.slice(0, start) + k + val.slice(end);
+        input.setSelectionRange(start + 1, start + 1);
+      }
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
+    });
+    key.addEventListener('pointerup', () => key.classList.remove('pressed'));
+    key.addEventListener('pointerleave', () => key.classList.remove('pressed'));
+  });
+
   // Tab navigation
   $$('.nav-btn').forEach(btn => {
     btn.onclick = () => {
@@ -1677,6 +1807,9 @@ function setupEvents() {
       $('#searchBar').classList.toggle('visible', btn.dataset.tab === 'search');
       if (btn.dataset.tab === 'search') {
         setTimeout(() => $('#searchInput').focus(), 100);
+        if (window.matchMedia('(orientation: portrait)').matches) oskShow();
+      } else {
+        oskHide();
       }
       
       // Load holds when holds tab is clicked
@@ -1689,7 +1822,6 @@ function setupEvents() {
   });
   
   // Search with debounce
-  let searchTimeout;
   $('#searchInput').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
@@ -1697,7 +1829,7 @@ function setupEvents() {
       resetIdleTimer();
     }, 300);
   });
-  
+
   // Movie modal
   $('#btnCloseMovie').onclick = closeMovie;
   $('#btnRequestNow').onclick = () => requestMovie('now');
