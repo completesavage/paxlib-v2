@@ -202,6 +202,11 @@ body {
 .osk-key.clear-btn { background: #3a3a20; min-width: 80px; font-size: 14px; }
 .osk-key.clear-btn:active { background: #6d6d2e; }
 
+@media (orientation: landscape) {
+  #oskContainer { display: none !important; }
+  .main.osk-open { height: calc(100vh - 190px); }
+}
+
 /* Main content */
 .main {
   height: calc(100vh - 190px);
@@ -1743,59 +1748,20 @@ async function requestMovie(type) {
 
 // Event setup
 function setupEvents() {
-  // Tab navigation
-  $$('.nav-btn').forEach(btn => {
-    btn.onclick = () => {
-      $$('.nav-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      
-      $$('.section').forEach(s => s.classList.remove('active'));
-      $(`#tab${btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1)}`).classList.add('active');
-      
-      $('#searchBar').classList.toggle('visible', btn.dataset.tab === 'search');
-      if (btn.dataset.tab === 'search') {
-        setTimeout(() => $('#searchInput').focus(), 100);
-        oskShow();
-      } else {
-        oskHide();
-      }
-      
-      // Load holds when holds tab is clicked
-      if (btn.dataset.tab === 'holds' && currentUser) {
-        loadHolds();
-      }
-      
-      resetIdleTimer();
-    };
-  });
-  
-  // Search with debounce
-  let searchTimeout;
-  $('#searchInput').addEventListener('input', (e) => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      doSearch(e.target.value);
-      resetIdleTimer();
-    }, 300);
-  });
-
-  // On-screen keyboard
+  // On-screen keyboard setup (defined first so oskShow/oskHide are available)
   const osk = $('#oskContainer');
-  const searchInput = $('#searchInput');
-
   function oskShow() { osk.classList.add('visible'); $('.main').classList.add('osk-open'); }
   function oskHide() { osk.classList.remove('visible'); $('.main').classList.remove('osk-open'); }
 
   $$('.osk-key').forEach(key => {
     key.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); // prevent input losing focus
+      e.preventDefault();
       key.classList.add('pressed');
       const k = key.dataset.key;
-      const input = searchInput;
+      const input = $('#searchInput');
       const start = input.selectionStart;
       const end = input.selectionEnd;
       const val = input.value;
-
       if (k === 'BACKSPACE') {
         if (start !== end) {
           input.value = val.slice(0, start) + val.slice(end);
@@ -1819,19 +1785,49 @@ function setupEvents() {
         input.value = val.slice(0, start) + k + val.slice(end);
         input.setSelectionRange(start + 1, start + 1);
       }
-
-      // Trigger search
       clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => {
-        doSearch(input.value);
-        resetIdleTimer();
-      }, 150);
+      searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
     });
-
     key.addEventListener('pointerup', () => key.classList.remove('pressed'));
     key.addEventListener('pointerleave', () => key.classList.remove('pressed'));
   });
+
+  // Tab navigation
+  $$('.nav-btn').forEach(btn => {
+    btn.onclick = () => {
+      $$('.nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      $$('.section').forEach(s => s.classList.remove('active'));
+      $(`#tab${btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1)}`).classList.add('active');
+      
+      $('#searchBar').classList.toggle('visible', btn.dataset.tab === 'search');
+      if (btn.dataset.tab === 'search') {
+        setTimeout(() => $('#searchInput').focus(), 100);
+        if (window.matchMedia('(orientation: portrait)').matches) oskShow();
+      } else {
+        oskHide();
+      }
+      
+      // Load holds when holds tab is clicked
+      if (btn.dataset.tab === 'holds' && currentUser) {
+        loadHolds();
+      }
+      
+      resetIdleTimer();
+    };
+  });
   
+  // Search with debounce
+  let searchTimeout;
+  $('#searchInput').addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      doSearch(e.target.value);
+      resetIdleTimer();
+    }, 300);
+  });
+
   // Movie modal
   $('#btnCloseMovie').onclick = closeMovie;
   $('#btnRequestNow').onclick = () => requestMovie('now');
