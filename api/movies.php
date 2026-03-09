@@ -27,7 +27,7 @@ $polarisLoaded = false;
 function loadPolaris() {
     global $polarisLoaded;
     if (!$polarisLoaded && file_exists(__DIR__ . '/polaris.php')) {
-        @include_once __DIR__ . '/polaris.php';
+        include_once __DIR__ . '/polaris.php';
         $polarisLoaded = class_exists('PolarisAPI');
     }
     return $polarisLoaded;
