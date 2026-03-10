@@ -204,8 +204,8 @@ body {
 .osk-key.space:active, .osk-key.space.pressed { color: #fff; }
 .osk-key.backspace { background: #fff3f3; border-color: #ffcdd2; box-shadow: 0 3px 0 #ffcdd2; color: #c62828; min-width: 110px; }
 .osk-key.backspace:active, .osk-key.backspace.pressed { background: #c62828; color: #fff; border-color: #b71c1c; box-shadow: 0 1px 0 #b71c1c; }
-.osk-key.clear-btn { background: #fff8e1; border-color: #ffe082; box-shadow: 0 3px 0 #ffe082; color: #f57f17; min-width: 110px; font-size: 20px; }
-.osk-key.clear-btn:active, .osk-key.clear-btn.pressed { background: #f57f17; color: #fff; border-color: #e65100; box-shadow: 0 1px 0 #e65100; }
+.osk-key.clear-btn { background: #fff3f3; border-color: #ffcdd2; box-shadow: 0 3px 0 #ffcdd2; color: #c62828; min-width: 110px; font-size: 20px; }
+.osk-key.clear-btn:active, .osk-key.clear-btn.pressed { background: #c62828; color: #fff; border-color: #b71c1c; box-shadow: 0 1px 0 #b71c1c; }
 
 @media (orientation: landscape) {
   #oskContainer { display: none !important; }
@@ -854,7 +854,6 @@ body {
           </span>
         </div>
         <div class="detail-row"><span class="detail-label">Call #:</span> <span id="modalCall">—</span></div>
-        <div class="detail-row"><span class="detail-label">DVD #:</span> <span id="modalDvdId">—</span></div>
         <div class="detail-row"><span class="detail-label">Barcode:</span> <span id="modalBarcode">—</span></div>
         <div class="detail-row"><span class="detail-label">Location:</span> <span id="modalLocation">DVD Section</span></div>
       </div>
@@ -874,8 +873,8 @@ body {
   <div class="modal" style="max-width:400px;">
     <div class="login-box">
       <div class="login-title">Welcome!</div>
-      <div class="login-sub">Scan or enter your library card</div>
-      <input type="text" class="login-input" id="barcodeInput" placeholder="Library card #" autofocus autocomplete="off">
+      <div class="login-sub">Enter your library card number or last name</div>
+      <input type="text" class="login-input" id="barcodeInput" placeholder="Card number or last name" autofocus autocomplete="off">
       <div class="login-error" id="loginError">Card not found</div>
       <div class="numpad">
         <button class="num-btn" data-n="1">1</button>
@@ -892,23 +891,6 @@ body {
         <button class="num-btn go" data-n="GO">GO</button>
       </div>
       <button class="btn btn-lg btn-gray" id="btnCancelLogin">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Guest Hold Modal -->
-<div class="modal-bg" id="guestHoldModal">
-  <div class="modal" style="max-width:460px;">
-    <div class="login-box">
-      <div class="login-title">📌 Place a Hold</div>
-      <div class="login-sub">Enter your name and we'll set it aside for you</div>
-      <input type="text" class="login-input" id="guestFirstName" placeholder="First name" autocomplete="off" readonly>
-      <input type="text" class="login-input" id="guestLastName" placeholder="Last name" autocomplete="off" readonly style="margin-top:10px;">
-      <div class="login-error" id="guestHoldError">Please enter your first and last name</div>
-      <div style="display:flex; gap:10px; margin-top:16px;">
-        <button class="btn btn-lg btn-primary" id="btnGuestHoldSubmit" style="flex:1;">Place Hold</button>
-        <button class="btn btn-lg btn-gray" id="btnGuestHoldCancel" style="flex:1;">Cancel</button>
-      </div>
     </div>
   </div>
 </div>
@@ -961,7 +943,6 @@ function hideLoading() {
 let movies = [];
 let movieMap = {};
 let movieStatuses = {}; // barcode => {status, available}
-let activeOskTarget = null; // which input the OSK types into
 let currentFilter = 'all'; // 'all' or 'available'
 let statusesLoaded = false;
 let currentUser = null;
@@ -1264,7 +1245,6 @@ async function openMovie(barcode) {
   $('#modalRating').textContent = currentMovie.rating || 'NR';
   $('#modalBarcode').textContent = barcode;
   $('#modalCall').textContent = currentMovie.callNumber || '—';
-  $('#modalDvdId').textContent = currentMovie.dvdId ? '#' + currentMovie.dvdId : '—';
   $('#modalLocation').textContent = currentMovie.location || 'DVD Section';
   
   // Show spinner while checking
@@ -1305,7 +1285,6 @@ async function openMovie(barcode) {
         };
       }
       $('#modalCall').textContent = m.callNumber || '—';
-      $('#modalDvdId').textContent = m.dvdId ? '#' + m.dvdId : '—';
       $('#modalLocation').textContent = m.location || 'DVD Section';
       
       const status = m.status || 'Unknown';
@@ -1359,40 +1338,46 @@ function closeLogin() {
 }
 
 async function doLogin() {
-  const barcode = $('#barcodeInput').value.trim();
+  const input = $('#barcodeInput').value.trim();
 
-  if (!barcode) {
-    $('#loginError').textContent = 'Please enter your card number';
+  if (!input) {
+    $('#loginError').textContent = 'Please enter your card number or last name';
     $('#loginError').classList.add('visible');
     return;
   }
 
-  // optional: basic barcode format check (prevents junk like "hello")
-  if (!/^\d{5,20}$/.test(barcode)) {
-    $('#loginError').textContent = 'Invalid barcode format';
-    $('#loginError').classList.add('visible');
-    return;
-  }
+  // Detect: all digits = barcode, anything with letters = name search
+  const isBarcode = /^\d+$/.test(input);
 
   showLoading('Logging in...', 'Please wait');
 
   try {
-    // First get basic patron info
-    const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`);
-    const data = await res.json();
+    let data;
+    if (isBarcode) {
+      const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(input)}`);
+      data = await res.json();
+    } else {
+      const res = await fetch(`api/patron.php?name=${encodeURIComponent(input)}`);
+      data = await res.json();
+
+      // If name search returns multiple, show picker (future), for now use first
+      if (data.ok && data.patrons && data.patrons.length > 0) {
+        data.patron = data.patrons[0];
+      }
+    }
 
     if (!data.ok || !data.patron) {
       hideLoading();
-      $('#loginError').textContent = 'Card not found';
+      $('#loginError').textContent = isBarcode ? 'Card not found' : 'No patron found with that name';
       $('#loginError').classList.add('visible');
-      toast('Invalid library card', 'error');
+      toast(isBarcode ? 'Invalid library card' : 'Name not found', 'error');
       return;
     }
 
     currentUser = data.patron;
 
     // Now check patron status (fines, checkouts)
-    const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(barcode)}`);
+    const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(currentUser.barcode)}`);
     const statusData = await statusRes.json();
     
     hideLoading();
@@ -1438,7 +1423,7 @@ async function doLogin() {
     $('#userInfo').classList.add('visible');
     $('#btnLogin').style.display = 'none';
     $('#btnLogout').style.display = 'block';
-    $('#btnHoldsTab').style.display = 'block'; // Show holds tab
+    $('#btnHoldsTab').style.display = 'block';
 
     closeLogin();
     toast(`Welcome, ${currentUser.name}!`, 'success');
@@ -1447,7 +1432,6 @@ async function doLogin() {
   } catch (e) {
     hideLoading();
     console.error("Login API error:", e);
-
     $('#loginError').textContent = 'Login system unavailable';
     $('#loginError').classList.add('visible');
     toast('Login failed. Try again.', 'error');
@@ -1621,87 +1605,8 @@ function formatDate(dateStr) {
 }
 
 // Request movie
-function showGuestHoldModal() {
-  $('#guestFirstName').value = '';
-  $('#guestLastName').value = '';
-  $('#guestFirstName').style.borderColor = '#2e7d32';
-  $('#guestLastName').style.borderColor = '#ddd';
-  $('#guestHoldError').style.display = 'none';
-  $('#guestHoldModal').classList.add('visible');
-  activeOskTarget = $('#guestFirstName');
-  oskShow();
-}
-
-function closeGuestHoldModal() {
-  $('#guestHoldModal').classList.remove('visible');
-  activeOskTarget = $('#searchInput');
-  if (window.oskHide) window.oskHide();
-}
-
-async function submitGuestHold() {
-  const first = $('#guestFirstName').value.trim();
-  const last = $('#guestLastName').value.trim();
-  if (!first || !last) {
-    $('#guestHoldError').style.display = 'block';
-    return;
-  }
-  $('#guestHoldError').style.display = 'none';
-  closeGuestHoldModal();
-  showLoading('Submitting hold...', 'Please wait');
-
-  try {
-    const reqData = {
-      movie: {
-        barcode: currentMovie.barcode,
-        title: currentMovie.title,
-        callNumber: currentMovie.callNumber,
-        cover: currentMovie.cover,
-        bibRecordId: currentMovie.bibRecordId,
-        dvdId: currentMovie.dvdId
-      },
-      patron: {
-        barcode: null,
-        name: first + ' ' + last,
-        firstName: first,
-        lastName: last,
-        id: null,
-        guest: true
-      },
-      type: 'hold'
-    };
-
-    const res = await fetch('api/requests.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reqData)
-    });
-    const data = await res.json();
-    hideLoading();
-
-    if (!data.ok) {
-      toast('Request failed: ' + (data.error || 'Unknown error'), 'error');
-      return;
-    }
-
-    const dvdLabel = currentMovie.dvdId ? ` (DVD #${currentMovie.dvdId})` : '';
-    $('#confirmIcon').textContent = '📌';
-    $('#confirmTitle').textContent = 'Hold Placed!';
-    $('#confirmMsg').textContent = `"${currentMovie.title}"${dvdLabel} has been requested for ${first} ${last}. Staff will set it aside for you.`;
-    $('#confirmModal').classList.add('visible');
-  } catch(e) {
-    hideLoading();
-    toast('Request failed', 'error');
-  }
-}
-
 async function requestMovie(type) {
   if (!currentUser) {
-    if (type === 'hold') {
-      // Guest hold — show name entry modal
-      closeMovie();
-      showGuestHoldModal();
-      return;
-    }
     closeMovie();
     showLogin();
     return;
@@ -1769,7 +1674,8 @@ async function requestMovie(type) {
           body: JSON.stringify({
             patronBarcode: currentUser.barcode,
             bibRecordId: currentMovie.bibRecordId,
-            itemBarcode: currentMovie.barcode
+            itemBarcode: currentMovie.barcode,
+            dvdId: currentMovie.dvdId ?? null
           })
         });
         
@@ -1833,15 +1739,13 @@ async function requestMovie(type) {
     }
     
     if (type === 'hold') {
-      const dvdLabel = currentMovie.dvdId ? ` (DVD #${currentMovie.dvdId})` : '';
       $('#confirmIcon').textContent = '📌';
       $('#confirmTitle').textContent = 'Hold Placed!';
-      $('#confirmMsg').textContent = `"${currentMovie.title}"${dvdLabel} is on hold. We'll let you know when it's ready.`;
+      $('#confirmMsg').textContent = `"${currentMovie.title}" is on hold. We'll let you know when it's ready.`;
     } else {
-      const dvdLabel = currentMovie.dvdId ? ` (DVD #${currentMovie.dvdId})` : '';
       $('#confirmIcon').textContent = '✅';
       $('#confirmTitle').textContent = 'Request Sent!';
-      $('#confirmMsg').textContent = `Staff will pull "${currentMovie.title}"${dvdLabel} for you. Please wait at the front desk.`;
+      $('#confirmMsg').textContent = `Staff will pull "${currentMovie.title}" for you. Please wait at the front desk.`;
     }
     
     $('#confirmModal').classList.add('visible');
@@ -1857,24 +1761,18 @@ async function requestMovie(type) {
 function setupEvents() {
   // On-screen keyboard setup (defined first so oskShow/oskHide are available)
   const osk = $('#oskContainer');
-  function oskShow() { $('#oskContainer').classList.add('visible'); $('.main').classList.add('osk-open'); }
-  function oskHide() { $('#oskContainer').classList.remove('visible'); $('.main').classList.remove('osk-open'); }
-  // Expose globally so guest hold modal can use them
-  window.oskShow = oskShow;
-  window.oskHide = oskHide;
+  function oskShow() { osk.classList.add('visible'); $('.main').classList.add('osk-open'); }
+  function oskHide() { osk.classList.remove('visible'); $('.main').classList.remove('osk-open'); }
 
   // searchTimeout declared here so OSK handlers can use it
   let searchTimeout;
-
-  // Initialize OSK target
-  activeOskTarget = $('#searchInput');
 
   $$('.osk-key').forEach(key => {
     key.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       key.classList.add('pressed');
       const k = key.dataset.key;
-      const input = activeOskTarget || $('#searchInput');
+      const input = $('#searchInput');
       const start = input.selectionStart;
       const end = input.selectionEnd;
       const val = input.value;
@@ -1901,11 +1799,8 @@ function setupEvents() {
         input.value = val.slice(0, start) + k + val.slice(end);
         input.setSelectionRange(start + 1, start + 1);
       }
-      // Only trigger search when typing in search box
-      if (input === $('#searchInput')) {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
-      }
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
     });
     key.addEventListener('pointerup', () => key.classList.remove('pressed'));
     key.addEventListener('pointerleave', () => key.classList.remove('pressed'));
@@ -1951,21 +1846,6 @@ function setupEvents() {
   $('#btnRequestNow').onclick = () => requestMovie('now');
   $('#btnPlaceHold').onclick = () => requestMovie('hold');
   $('#movieModal').onclick = e => { if (e.target.id === 'movieModal') closeMovie(); };
-
-  // Guest hold modal
-  $('#btnGuestHoldSubmit').onclick = submitGuestHold;
-  $('#btnGuestHoldCancel').onclick = closeGuestHoldModal;
-  $('#guestHoldModal').onclick = e => { if (e.target.id === 'guestHoldModal') closeGuestHoldModal(); };
-
-  // Switch OSK target when tapping name fields (readonly so use click/pointerdown)
-  function setOskTarget(el) {
-    activeOskTarget = el;
-    $$('#guestFirstName, #guestLastName').forEach(f => f.style.borderColor = '#ddd');
-    el.style.borderColor = '#2e7d32';
-  }
-  $('#guestFirstName').addEventListener('pointerdown', () => setOskTarget($('#guestFirstName')));
-  $('#guestLastName').addEventListener('pointerdown', () => setOskTarget($('#guestLastName')));
-  $('#searchInput').addEventListener('focus', () => { activeOskTarget = $('#searchInput'); });
   
   // Login
   $('#btnLogin').onclick = showLogin;
