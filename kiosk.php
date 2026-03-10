@@ -1297,14 +1297,14 @@ async function openMovie(barcode) {
       $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
       
       // Show appropriate buttons based on availability
+      const hasCard = currentUser && !currentUser.nameOnly;
       if (isAvailable) {
-        // Available: Show both Check Out Now and Place Hold
         $('#btnRequestNow').style.display = 'block';
-        $('#btnPlaceHold').style.display = currentUser && !currentUser.nameOnly ? 'block' : 'none';
+        $('#btnPlaceHold').style.display = hasCard ? 'block' : 'none';
       } else {
-        // Not available: Only show Place Hold (card users only)
-        $('#btnRequestNow').style.display = 'none';
-        $('#btnPlaceHold').style.display = currentUser && !currentUser.nameOnly ? 'block' : 'none';
+        // Not available: Get Now always visible, Place Hold only for card users
+        $('#btnRequestNow').style.display = 'block';
+        $('#btnPlaceHold').style.display = hasCard ? 'block' : 'none';
       }
       
       currentMovie = m;
@@ -1315,9 +1315,8 @@ async function openMovie(barcode) {
     // Hide spinner and show error
     spinner.style.display = 'none';
     statusText.textContent = 'Error checking status';
-    // On error, only show Place Hold to be safe
-    $('#btnRequestNow').style.display = 'none';
-    $('#btnPlaceHold').style.display = 'block';
+    $('#btnRequestNow').style.display = 'block';
+    $('#btnPlaceHold').style.display = currentUser && !currentUser.nameOnly ? 'block' : 'none';
   }
 }
 
