@@ -64,7 +64,7 @@ body { font-family: 'Inter', sans-serif; background: #f0f2f5; color: #333; displ
 }
 .header h2 { font-size: 20px; color: #1b5e20; }
 .header-btns { display: flex; gap: 8px; }
-.content { padding: 20px 25px; }
+.content { padding: 20px 25px; height:100%}
 
 /* Page */
 .page { display: none; }
