@@ -860,8 +860,8 @@ body {
     </div>
     <div class="modal-body">
       <div class="modal-actions">
-        <button class="btn btn-lg btn-primary" id="btnRequestNow">📋 Request Now — Staff will pull it</button>
-        <button class="btn btn-lg btn-blue" id="btnPlaceHold">📌 Place on Hold — Pick up later</button>
+        <button class="btn btn-lg btn-primary" id="btnRequestNow">📋 Get Now — Staff will pull it</button>
+        <button class="btn btn-lg btn-blue" id="btnPlaceHold">📌 Place a Hold — Pick up another day</button>
         <button class="btn btn-lg btn-gray" id="btnCloseMovie">Close</button>
       </div>
     </div>
