@@ -53,6 +53,7 @@ error_log("Decoded input: " . print_r($input, true));
 $patronBarcode = $input['patronBarcode'] ?? null;
 $bibRecordId   = $input['bibRecordId'] ?? null;
 $itemBarcode   = $input['itemBarcode'] ?? null;
+$dvdId         = $input['dvdId'] ?? null;
 $pickupBranchId = 699; // Replace with your branch ID
 
 error_log("Patron: $patronBarcode, Bib: $bibRecordId, Item: $itemBarcode");
@@ -114,8 +115,9 @@ try {
     error_log("Found patron ID: $patronId");
 
     // Place the hold
-    error_log("Placing hold: Patron=$patronId, Bib=$bibRecordId, Pickup=$pickupBranchId");
-    $result = $api->placeLocalHold($patronId, $bibRecordId, $pickupBranchId);
+    $note = $dvdId ? "DVD #$dvdId" : null;
+    error_log("Placing hold: Patron=$patronId, Bib=$bibRecordId, Pickup=$pickupBranchId, Note=$note");
+    $result = $api->placeLocalHold($patronId, $bibRecordId, $pickupBranchId, 2, $note);
     error_log("Hold result: " . print_r($result, true));
 
     // Check if hold was successful
