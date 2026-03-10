@@ -160,47 +160,52 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  background: #1a1a2e;
-  padding: 10px 8px 14px;
+  background: #f1f8f1;
+  padding: 14px 12px 18px;
   z-index: 9999;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
-  border-top: 3px solid #2e7d32;
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+  border-top: 4px solid #2e7d32;
 }
 #oskContainer.visible { display: block; }
 .osk-row {
   display: flex;
   justify-content: center;
-  gap: 5px;
-  margin-bottom: 5px;
+  gap: 7px;
+  margin-bottom: 7px;
 }
 .osk-key {
-  background: #2d2d44;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 18px;
-  font-weight: 600;
-  min-width: 52px;
-  height: 52px;
+  background: #fff;
+  color: #1a1a1a;
+  border: 2px solid #c8e6c9;
+  border-radius: 10px;
+  font-size: 26px;
+  font-weight: 700;
+  min-width: 72px;
+  height: 70px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.1s, transform 0.1s;
+  transition: background 0.08s, transform 0.08s;
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
+  box-shadow: 0 3px 0 #c8e6c9;
 }
 .osk-key:active, .osk-key.pressed {
   background: #2e7d32;
-  transform: scale(0.93);
+  color: #fff;
+  border-color: #1b5e20;
+  box-shadow: 0 1px 0 #1b5e20;
+  transform: translateY(2px);
 }
-.osk-key.wide { min-width: 80px; font-size: 15px; }
-.osk-key.space { min-width: 260px; font-size: 14px; letter-spacing: 1px; }
-.osk-key.backspace { background: #4a2020; min-width: 80px; }
-.osk-key.backspace:active { background: #7d2e2e; }
-.osk-key.clear-btn { background: #3a3a20; min-width: 80px; font-size: 14px; }
-.osk-key.clear-btn:active { background: #6d6d2e; }
+.osk-key.wide { min-width: 110px; font-size: 20px; }
+.osk-key.space { min-width: 380px; font-size: 18px; letter-spacing: 2px; color: #555; }
+.osk-key.space:active, .osk-key.space.pressed { color: #fff; }
+.osk-key.backspace { background: #fff3f3; border-color: #ffcdd2; box-shadow: 0 3px 0 #ffcdd2; color: #c62828; min-width: 110px; }
+.osk-key.backspace:active, .osk-key.backspace.pressed { background: #c62828; color: #fff; border-color: #b71c1c; box-shadow: 0 1px 0 #b71c1c; }
+.osk-key.clear-btn { background: #fff8e1; border-color: #ffe082; box-shadow: 0 3px 0 #ffe082; color: #f57f17; min-width: 110px; font-size: 20px; }
+.osk-key.clear-btn:active, .osk-key.clear-btn.pressed { background: #f57f17; color: #fff; border-color: #e65100; box-shadow: 0 1px 0 #e65100; }
 
 @media (orientation: landscape) {
   #oskContainer { display: none !important; }
@@ -214,7 +219,7 @@ body {
   padding: 20px 0;
 }
 .main.osk-open {
-  height: calc(100vh - 190px - 230px);
+  height: calc(100vh - 190px - 310px);
 }
 .section { display: none; }
 .section.active { display: block; }
@@ -849,14 +854,15 @@ body {
           </span>
         </div>
         <div class="detail-row"><span class="detail-label">Call #:</span> <span id="modalCall">—</span></div>
+        <div class="detail-row"><span class="detail-label">DVD #:</span> <span id="modalDvdId">—</span></div>
         <div class="detail-row"><span class="detail-label">Barcode:</span> <span id="modalBarcode">—</span></div>
         <div class="detail-row"><span class="detail-label">Location:</span> <span id="modalLocation">DVD Section</span></div>
       </div>
     </div>
     <div class="modal-body">
       <div class="modal-actions">
-        <button class="btn btn-lg btn-primary" id="btnRequestNow">📋 Request Now — Staff will pull it</button>
-        <button class="btn btn-lg btn-blue" id="btnPlaceHold">📌 Place on Hold — Pick up later</button>
+        <button class="btn btn-lg btn-primary" id="btnRequestNow">📋 Get Now — Staff will pull it</button>
+        <button class="btn btn-lg btn-blue" id="btnPlaceHold">📌 Place a Hold — Pick up another day</button>
         <button class="btn btn-lg btn-gray" id="btnCloseMovie">Close</button>
       </div>
     </div>
@@ -886,6 +892,23 @@ body {
         <button class="num-btn go" data-n="GO">GO</button>
       </div>
       <button class="btn btn-lg btn-gray" id="btnCancelLogin">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Guest Hold Modal -->
+<div class="modal-bg" id="guestHoldModal">
+  <div class="modal" style="max-width:460px;">
+    <div class="login-box">
+      <div class="login-title">📌 Place a Hold</div>
+      <div class="login-sub">Enter your name and we'll set it aside for you</div>
+      <input type="text" class="login-input" id="guestFirstName" placeholder="First name" autocomplete="off" readonly>
+      <input type="text" class="login-input" id="guestLastName" placeholder="Last name" autocomplete="off" readonly style="margin-top:10px;">
+      <div class="login-error" id="guestHoldError">Please enter your first and last name</div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button class="btn btn-lg btn-primary" id="btnGuestHoldSubmit" style="flex:1;">Place Hold</button>
+        <button class="btn btn-lg btn-gray" id="btnGuestHoldCancel" style="flex:1;">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
@@ -938,6 +961,7 @@ function hideLoading() {
 let movies = [];
 let movieMap = {};
 let movieStatuses = {}; // barcode => {status, available}
+let activeOskTarget = null; // which input the OSK types into
 let currentFilter = 'all'; // 'all' or 'available'
 let statusesLoaded = false;
 let currentUser = null;
@@ -1240,6 +1264,7 @@ async function openMovie(barcode) {
   $('#modalRating').textContent = currentMovie.rating || 'NR';
   $('#modalBarcode').textContent = barcode;
   $('#modalCall').textContent = currentMovie.callNumber || '—';
+  $('#modalDvdId').textContent = currentMovie.dvdId ? '#' + currentMovie.dvdId : '—';
   $('#modalLocation').textContent = currentMovie.location || 'DVD Section';
   
   // Show spinner while checking
@@ -1280,6 +1305,7 @@ async function openMovie(barcode) {
         };
       }
       $('#modalCall').textContent = m.callNumber || '—';
+      $('#modalDvdId').textContent = m.dvdId ? '#' + m.dvdId : '—';
       $('#modalLocation').textContent = m.location || 'DVD Section';
       
       const status = m.status || 'Unknown';
@@ -1595,8 +1621,87 @@ function formatDate(dateStr) {
 }
 
 // Request movie
+function showGuestHoldModal() {
+  $('#guestFirstName').value = '';
+  $('#guestLastName').value = '';
+  $('#guestFirstName').style.borderColor = '#2e7d32';
+  $('#guestLastName').style.borderColor = '#ddd';
+  $('#guestHoldError').style.display = 'none';
+  $('#guestHoldModal').classList.add('visible');
+  activeOskTarget = $('#guestFirstName');
+  oskShow();
+}
+
+function closeGuestHoldModal() {
+  $('#guestHoldModal').classList.remove('visible');
+  activeOskTarget = $('#searchInput');
+  if (window.oskHide) window.oskHide();
+}
+
+async function submitGuestHold() {
+  const first = $('#guestFirstName').value.trim();
+  const last = $('#guestLastName').value.trim();
+  if (!first || !last) {
+    $('#guestHoldError').style.display = 'block';
+    return;
+  }
+  $('#guestHoldError').style.display = 'none';
+  closeGuestHoldModal();
+  showLoading('Submitting hold...', 'Please wait');
+
+  try {
+    const reqData = {
+      movie: {
+        barcode: currentMovie.barcode,
+        title: currentMovie.title,
+        callNumber: currentMovie.callNumber,
+        cover: currentMovie.cover,
+        bibRecordId: currentMovie.bibRecordId,
+        dvdId: currentMovie.dvdId
+      },
+      patron: {
+        barcode: null,
+        name: first + ' ' + last,
+        firstName: first,
+        lastName: last,
+        id: null,
+        guest: true
+      },
+      type: 'hold'
+    };
+
+    const res = await fetch('api/requests.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reqData)
+    });
+    const data = await res.json();
+    hideLoading();
+
+    if (!data.ok) {
+      toast('Request failed: ' + (data.error || 'Unknown error'), 'error');
+      return;
+    }
+
+    const dvdLabel = currentMovie.dvdId ? ` (DVD #${currentMovie.dvdId})` : '';
+    $('#confirmIcon').textContent = '📌';
+    $('#confirmTitle').textContent = 'Hold Placed!';
+    $('#confirmMsg').textContent = `"${currentMovie.title}"${dvdLabel} has been requested for ${first} ${last}. Staff will set it aside for you.`;
+    $('#confirmModal').classList.add('visible');
+  } catch(e) {
+    hideLoading();
+    toast('Request failed', 'error');
+  }
+}
+
 async function requestMovie(type) {
   if (!currentUser) {
+    if (type === 'hold') {
+      // Guest hold — show name entry modal
+      closeMovie();
+      showGuestHoldModal();
+      return;
+    }
     closeMovie();
     showLogin();
     return;
@@ -1728,13 +1833,15 @@ async function requestMovie(type) {
     }
     
     if (type === 'hold') {
+      const dvdLabel = currentMovie.dvdId ? ` (DVD #${currentMovie.dvdId})` : '';
       $('#confirmIcon').textContent = '📌';
       $('#confirmTitle').textContent = 'Hold Placed!';
-      $('#confirmMsg').textContent = `"${currentMovie.title}" is on hold. We'll let you know when it's ready.`;
+      $('#confirmMsg').textContent = `"${currentMovie.title}"${dvdLabel} is on hold. We'll let you know when it's ready.`;
     } else {
+      const dvdLabel = currentMovie.dvdId ? ` (DVD #${currentMovie.dvdId})` : '';
       $('#confirmIcon').textContent = '✅';
       $('#confirmTitle').textContent = 'Request Sent!';
-      $('#confirmMsg').textContent = `Staff will pull "${currentMovie.title}" for you. Please wait at the front desk.`;
+      $('#confirmMsg').textContent = `Staff will pull "${currentMovie.title}"${dvdLabel} for you. Please wait at the front desk.`;
     }
     
     $('#confirmModal').classList.add('visible');
@@ -1750,15 +1857,24 @@ async function requestMovie(type) {
 function setupEvents() {
   // On-screen keyboard setup (defined first so oskShow/oskHide are available)
   const osk = $('#oskContainer');
-  function oskShow() { osk.classList.add('visible'); $('.main').classList.add('osk-open'); }
-  function oskHide() { osk.classList.remove('visible'); $('.main').classList.remove('osk-open'); }
+  function oskShow() { $('#oskContainer').classList.add('visible'); $('.main').classList.add('osk-open'); }
+  function oskHide() { $('#oskContainer').classList.remove('visible'); $('.main').classList.remove('osk-open'); }
+  // Expose globally so guest hold modal can use them
+  window.oskShow = oskShow;
+  window.oskHide = oskHide;
+
+  // searchTimeout declared here so OSK handlers can use it
+  let searchTimeout;
+
+  // Initialize OSK target
+  activeOskTarget = $('#searchInput');
 
   $$('.osk-key').forEach(key => {
     key.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       key.classList.add('pressed');
       const k = key.dataset.key;
-      const input = $('#searchInput');
+      const input = activeOskTarget || $('#searchInput');
       const start = input.selectionStart;
       const end = input.selectionEnd;
       const val = input.value;
@@ -1785,8 +1901,11 @@ function setupEvents() {
         input.value = val.slice(0, start) + k + val.slice(end);
         input.setSelectionRange(start + 1, start + 1);
       }
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
+      // Only trigger search when typing in search box
+      if (input === $('#searchInput')) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
+      }
     });
     key.addEventListener('pointerup', () => key.classList.remove('pressed'));
     key.addEventListener('pointerleave', () => key.classList.remove('pressed'));
@@ -1819,7 +1938,6 @@ function setupEvents() {
   });
   
   // Search with debounce
-  let searchTimeout;
   $('#searchInput').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
@@ -1833,6 +1951,21 @@ function setupEvents() {
   $('#btnRequestNow').onclick = () => requestMovie('now');
   $('#btnPlaceHold').onclick = () => requestMovie('hold');
   $('#movieModal').onclick = e => { if (e.target.id === 'movieModal') closeMovie(); };
+
+  // Guest hold modal
+  $('#btnGuestHoldSubmit').onclick = submitGuestHold;
+  $('#btnGuestHoldCancel').onclick = closeGuestHoldModal;
+  $('#guestHoldModal').onclick = e => { if (e.target.id === 'guestHoldModal') closeGuestHoldModal(); };
+
+  // Switch OSK target when tapping name fields (readonly so use click/pointerdown)
+  function setOskTarget(el) {
+    activeOskTarget = el;
+    $$('#guestFirstName, #guestLastName').forEach(f => f.style.borderColor = '#ddd');
+    el.style.borderColor = '#2e7d32';
+  }
+  $('#guestFirstName').addEventListener('pointerdown', () => setOskTarget($('#guestFirstName')));
+  $('#guestLastName').addEventListener('pointerdown', () => setOskTarget($('#guestLastName')));
+  $('#searchInput').addEventListener('focus', () => { activeOskTarget = $('#searchInput'); });
   
   // Login
   $('#btnLogin').onclick = showLogin;
