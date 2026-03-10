@@ -93,7 +93,7 @@ class PolarisAPI {
      */
     public function apiRequest($method, $path, $body = null) {
         if (!$this->authenticate()) {
-            return ['ok' => false, 'error' => 'Authentication failed', 'raw' => null];
+            return ['ok' => false, 'error' => 'Authentication failed'];
         }
         
         $url = "{$this->baseUrl}/api/v1/{$this->langCode}/{$this->siteId}/" . ltrim($path, '/');
@@ -320,9 +320,33 @@ class PolarisAPI {
         $pathPatron = "polaris/{$this->orgId}/{$this->workstationId}/patrons/{$patronId}/";
         return $this->apiRequest('GET', $pathPatron);
     }
-    
+
     /**
-     * Get all holds for a patron
+     * Search patrons by last name
+     * Returns array of matching patrons
+     */
+    public function searchPatronsByName($lastName) {
+        $lastName = urlencode(trim($lastName));
+        $path = "polaris/{$this->orgId}/{$this->workstationId}/patrons/search?q={$lastName}&searchby=namelast&max=10";
+        $result = $this->apiRequest('GET', $path);
+
+        if (!$result['ok']) {
+            return ['ok' => false, 'error' => 'Search failed', 'raw' => $result['raw'] ?? null];
+        }
+
+        // Polaris returns an array of patron records or a single record
+        $data = $result['data'];
+        if (empty($data)) {
+            return ['ok' => false, 'error' => 'No patrons found'];
+        }
+
+        // Normalize to array of patron records
+        $patrons = isset($data[0]) ? $data : [$data];
+
+        return ['ok' => true, 'patrons' => $patrons];
+    }
+
+    /**
      * Returns holds grouped by status
      */
     public function getPatronHolds($patronId) {
@@ -468,7 +492,7 @@ class PolarisAPI {
     /**
      * Place a local hold request with automatic handling of conversation steps
      */
-    public function placeLocalHold($patronId, $bibRecordId, $pickupBranchId, $origin = 2) {
+    public function placeLocalHold($patronId, $bibRecordId, $pickupBranchId, $origin = 2, $note = null) {
         $today = date('Y-m-d\TH:i:s');
         $future = date('Y-m-d\TH:i:s', strtotime('+6 months'));
         
@@ -481,6 +505,10 @@ class PolarisAPI {
             'ExpirationDate' => $future,
             'BibliographicRecordID' => (int)$bibRecordId
         ];
+
+        if (!empty($note)) {
+            $baseBody['Note'] = $note;
+        }
         
         $body = array_merge($baseBody, ['ProcedureStep' => 1]);
         
