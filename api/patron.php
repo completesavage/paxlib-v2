@@ -10,48 +10,15 @@ header('Access-Control-Allow-Origin: *');
 require_once __DIR__ . '/polaris.php';
 
 $barcode = isset($_GET['barcode']) ? trim($_GET['barcode']) : '';
-$name    = isset($_GET['name'])    ? trim($_GET['name'])    : '';
 
-if (empty($barcode) && empty($name)) {
+if (empty($barcode)) {
     http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'Missing barcode or name parameter']);
+    echo json_encode(['ok' => false, 'error' => 'Missing barcode parameter']);
     exit;
 }
 
 try {
     $api = new PolarisAPI();
-
-    // Name search
-    if (!empty($name)) {
-        $result = $api->searchPatronsByName($name);
-        if (!$result['ok']) {
-            http_response_code(404);
-            echo json_encode(['ok' => false, 'error' => 'No patron found', 'details' => $result]);
-            exit;
-        }
-
-        $patrons = [];
-        foreach ($result['patrons'] as $p) {
-            $reg = $p['Registration'] ?? $p;
-            $firstName = $reg['NameFirst'] ?? $p['NameFirst'] ?? '';
-            $lastName  = $reg['NameLast']  ?? $p['NameLast']  ?? '';
-            $displayName = trim("$firstName $lastName") ?: ($reg['PatronFullName'] ?? '');
-            $patrons[] = [
-                'id'      => $p['PatronID'] ?? null,
-                'barcode' => $p['Barcode']  ?? null,
-                'name'    => $displayName,
-                'firstName' => $firstName,
-                'lastName'  => $lastName,
-                'email'     => $reg['EmailAddress'] ?? null,
-            ];
-        }
-
-        // Return first match as `patron` too, for backwards compat with doLogin
-        echo json_encode(['ok' => true, 'patron' => $patrons[0], 'patrons' => $patrons]);
-        exit;
-    }
-
-    // Barcode lookup
     $result = $api->getPatronByBarcode($barcode);
 
     // DEBUG: Log raw API response
