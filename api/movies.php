@@ -122,6 +122,7 @@ function getMergedMovies() {
     foreach ($csvMovies as $barcode => $csvData) {
         $movie = [
             'barcode' => $barcode,
+            'dvdId' => $csvData['id'] ?? null,
             'title' => $csvData['title'] ?? 'Unknown',
             'rating' => normalizeRating($csvData['rating'] ?? ''),
             'cover' => null,
