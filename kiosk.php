@@ -204,12 +204,19 @@ body {
 .osk-key.space:active, .osk-key.space.pressed { color: #fff; }
 .osk-key.backspace { background: #fff3f3; border-color: #ffcdd2; box-shadow: 0 3px 0 #ffcdd2; color: #c62828; min-width: 110px; }
 .osk-key.backspace:active, .osk-key.backspace.pressed { background: #c62828; color: #fff; border-color: #b71c1c; box-shadow: 0 1px 0 #b71c1c; }
-.osk-key.clear-btn { background: #fff3f3; border-color: #ffcdd2; box-shadow: 0 3px 0 #ffcdd2; color: #c62828; min-width: 110px; font-size: 20px; }
-.osk-key.clear-btn:active, .osk-key.clear-btn.pressed { background: #c62828; color: #fff; border-color: #b71c1c; box-shadow: 0 1px 0 #b71c1c; }
+.osk-key.clear-btn { background: #fff8e1; border-color: #ffe082; box-shadow: 0 3px 0 #ffe082; color: #f57f17; min-width: 110px; font-size: 20px; }
+.osk-key.clear-btn:active, .osk-key.clear-btn.pressed { background: #f57f17; color: #fff; border-color: #e65100; box-shadow: 0 1px 0 #e65100; }
 
 @media (orientation: landscape) {
   #oskContainer { display: none !important; }
   .main.osk-open { height: calc(100vh - 190px); }
+}
+
+/* Shift Get Now modal up when OSK is open */
+#oskContainer.visible ~ * #getNowModal.visible,
+body.getnow-osk-open #getNowModal.visible {
+  align-items: flex-start;
+  padding-top: 30px;
 }
 
 /* Main content */
@@ -773,6 +780,7 @@ body {
     <button class="osk-key space" data-key="SPACE">SPACE</button>
     <button class="osk-key wide" data-key="APOSTROPHE">'</button>
     <button class="osk-key wide" data-key="COLON">:</button>
+    <button class="osk-key wide osk-done-btn" data-key="DONE" id="oskDoneBtn" style="display:none;background:#2e7d32;color:#fff;border-color:#1b5e20;min-width:110px;">✓ Done</button>
   </div>
 </div>
 
@@ -873,8 +881,8 @@ body {
   <div class="modal" style="max-width:400px;">
     <div class="login-box">
       <div class="login-title">Welcome!</div>
-      <div class="login-sub">Enter your library card number or last name</div>
-      <input type="text" class="login-input" id="barcodeInput" placeholder="Card number or last name" autofocus autocomplete="off">
+      <div class="login-sub">Scan or enter your library card</div>
+      <input type="text" class="login-input" id="barcodeInput" placeholder="Library card #" autofocus autocomplete="off">
       <div class="login-error" id="loginError">Card not found</div>
       <div class="numpad">
         <button class="num-btn" data-n="1">1</button>
@@ -891,6 +899,34 @@ body {
         <button class="num-btn go" data-n="GO">GO</button>
       </div>
       <button class="btn btn-lg btn-gray" id="btnCancelLogin">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Get Now Modal (card OR name) -->
+<div class="modal-bg" id="getNowModal">
+  <div class="modal" style="max-width:400px;">
+    <div class="login-box">
+      <div class="login-title">Get Now</div>
+      <div class="login-sub" id="getNowSub">Enter your library card number or your name</div>
+      <input type="text" class="login-input" id="getNowInput" placeholder="Card number or name" autocomplete="off">
+      <div class="login-error" id="getNowError"></div>
+      <div class="numpad" id="getNowNumpad">
+        <button class="num-btn" data-gn="1">1</button>
+        <button class="num-btn" data-gn="2">2</button>
+        <button class="num-btn" data-gn="3">3</button>
+        <button class="num-btn" data-gn="4">4</button>
+        <button class="num-btn" data-gn="5">5</button>
+        <button class="num-btn" data-gn="6">6</button>
+        <button class="num-btn" data-gn="7">7</button>
+        <button class="num-btn" data-gn="8">8</button>
+        <button class="num-btn" data-gn="9">9</button>
+        <button class="num-btn" data-gn="⌫">⌫</button>
+        <button class="num-btn" data-gn="0">0</button>
+        <button class="num-btn go" data-gn="GO">GO</button>
+      </div>
+      <button class="btn btn-lg" id="btnGetNowKeyboard" style="background:#e8f5e9;color:#2e7d32;border:2px solid #c8e6c9;margin-bottom:8px;">⌨ Enter Name Instead</button>
+      <button class="btn btn-lg btn-gray" id="btnCancelGetNow">Cancel</button>
     </div>
   </div>
 </div>
@@ -1297,14 +1333,14 @@ async function openMovie(barcode) {
       $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
       
       // Show appropriate buttons based on availability
-      const hasCard = currentUser && !currentUser.nameOnly;
       if (isAvailable) {
+        // Available: Show both Check Out Now and Place Hold
         $('#btnRequestNow').style.display = 'block';
-        $('#btnPlaceHold').style.display = hasCard ? 'block' : 'none';
+        $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
       } else {
-        // Not available: Get Now always visible, Place Hold only for card users
+        // Not available: Get Now always visible, Place Hold for card users only
         $('#btnRequestNow').style.display = 'block';
-        $('#btnPlaceHold').style.display = hasCard ? 'block' : 'none';
+        $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
       }
       
       currentMovie = m;
@@ -1316,7 +1352,7 @@ async function openMovie(barcode) {
     spinner.style.display = 'none';
     statusText.textContent = 'Error checking status';
     $('#btnRequestNow').style.display = 'block';
-    $('#btnPlaceHold').style.display = currentUser && !currentUser.nameOnly ? 'block' : 'none';
+    $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
   }
 }
 
@@ -1337,82 +1373,99 @@ function closeLogin() {
 }
 
 async function doLogin() {
-  const input = $('#barcodeInput').value.trim();
+  const barcode = $('#barcodeInput').value.trim();
 
-  if (!input) {
-    $('#loginError').textContent = 'Please enter your card number or last name';
+  if (!barcode) {
+    $('#loginError').textContent = 'Please enter your card number';
     $('#loginError').classList.add('visible');
     return;
   }
 
-  const isBarcode = /^\d+$/.test(input);
+  // optional: basic barcode format check (prevents junk like "hello")
+  if (!/^\d{5,20}$/.test(barcode)) {
+    $('#loginError').textContent = 'Invalid barcode format';
+    $('#loginError').classList.add('visible');
+    return;
+  }
 
-  if (isBarcode) {
-    // Full Polaris lookup for card number
-    showLoading('Logging in...', 'Please wait');
-    try {
-      const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(input)}`);
-      const data = await res.json();
+  showLoading('Logging in...', 'Please wait');
 
-      if (!data.ok || !data.patron) {
-        hideLoading();
-        $('#loginError').textContent = 'Card not found';
-        $('#loginError').classList.add('visible');
-        toast('Invalid library card', 'error');
-        return;
-      }
+  try {
+    // First get basic patron info
+    const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`);
+    const data = await res.json();
 
-      currentUser = data.patron;
-
-      const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(input)}`);
-      const statusData = await statusRes.json();
+    if (!data.ok || !data.patron) {
       hideLoading();
-
-      if (statusData.ok) {
-        patronStatus = statusData;
-        $('#patronName').textContent = statusData.patronName;
-        $('#patronFines').textContent = '$' + statusData.fines.total.toFixed(2);
-        $('#dvdCount').textContent = statusData.checkouts.dvds;
-
-        const finesDisplay = $('#patronFinesDisplay');
-        finesDisplay.classList.remove('warning', 'good');
-        finesDisplay.classList.add(statusData.fines.total > 0 ? 'warning' : 'good');
-
-        const counter = $('#checkoutCounter');
-        counter.classList.remove('warning', 'blocked');
-        if (statusData.checkouts.dvds >= 5) counter.classList.add('blocked');
-        else if (statusData.checkouts.dvds >= 4) counter.classList.add('warning');
-
-        $('#patronStatusBar').classList.add('visible');
-        if (!statusData.canCheckout && statusData.blockReasons.length > 0) {
-          toast('⚠️ ' + statusData.blockReasons.join('. '), 'error');
-        }
-      }
-
-    } catch (e) {
-      hideLoading();
-      $('#loginError').textContent = 'Login system unavailable';
+      $('#loginError').textContent = 'Card not found';
       $('#loginError').classList.add('visible');
-      toast('Login failed. Try again.', 'error');
+      toast('Invalid library card', 'error');
       return;
     }
 
-  } else {
-    // Name entry — no Polaris lookup, Get Now only
-    currentUser = { name: input, barcode: null, id: null, nameOnly: true };
-    patronStatus = null;
+    currentUser = data.patron;
+
+    // Now check patron status (fines, checkouts)
+    const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(barcode)}`);
+    const statusData = await statusRes.json();
+    
+    hideLoading();
+    
+    if (statusData.ok) {
+      patronStatus = statusData;
+      
+      // Update patron status bar
+      $('#patronName').textContent = statusData.patronName;
+      $('#patronFines').textContent = '$' + statusData.fines.total.toFixed(2);
+      $('#dvdCount').textContent = statusData.checkouts.dvds;
+      
+      // Apply warning styling
+      const finesDisplay = $('#patronFinesDisplay');
+      finesDisplay.classList.remove('warning', 'good');
+      if (statusData.fines.total > 5) {
+        finesDisplay.classList.add('warning');
+      } else if (statusData.fines.total > 0) {
+        finesDisplay.classList.add('warning');
+      } else {
+        finesDisplay.classList.add('good');
+      }
+      
+      const counter = $('#checkoutCounter');
+      counter.classList.remove('warning', 'blocked');
+      if (statusData.checkouts.dvds >= 5) {
+        counter.classList.add('blocked');
+      } else if (statusData.checkouts.dvds >= 4) {
+        counter.classList.add('warning');
+      }
+      
+      // Show patron status bar
+      $('#patronStatusBar').classList.add('visible');
+      
+      // Show blocking message if needed
+      if (!statusData.canCheckout && statusData.blockReasons.length > 0) {
+        toast('⚠️ ' + statusData.blockReasons.join('. '), 'error');
+      }
+    }
+
+    $('#userName').textContent = `Hello, ${currentUser.name}!`;
+    $('#userCard').textContent = `Card: ${currentUser.barcode}`;
+    $('#userInfo').classList.add('visible');
+    $('#btnLogin').style.display = 'none';
+    $('#btnLogout').style.display = 'block';
+    $('#btnHoldsTab').style.display = 'block'; // Show holds tab
+
+    closeLogin();
+    toast(`Welcome, ${currentUser.name}!`, 'success');
+    resetIdleTimer();
+
+  } catch (e) {
+    hideLoading();
+    console.error("Login API error:", e);
+
+    $('#loginError').textContent = 'Login system unavailable';
+    $('#loginError').classList.add('visible');
+    toast('Login failed. Try again.', 'error');
   }
-
-  $('#userName').textContent = `Hello, ${currentUser.name}!`;
-  $('#userCard').textContent = currentUser.barcode ? `Card: ${currentUser.barcode}` : 'Name sign-in';
-  $('#userInfo').classList.add('visible');
-  $('#btnLogin').style.display = 'none';
-  $('#btnLogout').style.display = 'block';
-  if (!currentUser.nameOnly) $('#btnHoldsTab').style.display = 'block';
-
-  closeLogin();
-  toast(`Welcome, ${currentUser.name}!`, 'success');
-  resetIdleTimer();
 }
 
 
@@ -1433,6 +1486,107 @@ function doLogout() {
   
   hideTimeout();
   toast('Signed out');
+}
+
+// ── Get Now modal (card OR name) ──────────────────────────────────────────────
+let _pendingGetNowMovie = null;
+
+function showGetNowLogin(movie) {
+  _pendingGetNowMovie = movie || currentMovie;
+  $('#getNowInput').value = '';
+  $('#getNowInput').placeholder = 'Card number or name';
+  $('#getNowError').textContent = '';
+  $('#getNowError').classList.remove('visible');
+  $('#getNowNumpad').style.display = 'grid';
+  $('#btnGetNowKeyboard').style.display = 'block';
+  $('#getNowModal').classList.add('visible');
+  setTimeout(() => $('#getNowInput').focus(), 100);
+}
+
+function closeGetNowModal() {
+  $('#getNowModal').classList.remove('visible');
+  // Hide OSK if it was open for Get Now
+  const osk = $('#oskContainer');
+  if (osk.classList.contains('visible')) {
+    osk.classList.remove('visible');
+    $('.main').classList.remove('osk-open');
+    document.body.classList.remove('getnow-osk-open');
+    $('#oskDoneBtn').style.display = 'none';
+  }
+  _pendingGetNowMovie = null;
+}
+
+async function doGetNowLogin() {
+  const input = $('#getNowInput').value.trim();
+  if (!input) {
+    $('#getNowError').textContent = 'Please enter your card number or name';
+    $('#getNowError').classList.add('visible');
+    return;
+  }
+
+  const isBarcode = /^\d+$/.test(input);
+
+  if (isBarcode) {
+    // Validate card via API
+    showLoading('Checking card...', 'Please wait');
+    try {
+      const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(input)}`);
+      const data = await res.json();
+      if (!data.ok || !data.patron) {
+        hideLoading();
+        $('#getNowError').textContent = 'Card not found';
+        $('#getNowError').classList.add('visible');
+        return;
+      }
+      currentUser = data.patron;
+
+      // Load status silently
+      try {
+        const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(input)}`);
+        const statusData = await statusRes.json();
+        if (statusData.ok) {
+          patronStatus = statusData;
+          $('#patronName').textContent = statusData.patronName;
+          $('#patronFines').textContent = '$' + statusData.fines.total.toFixed(2);
+          $('#dvdCount').textContent = statusData.checkouts.dvds;
+          const finesDisplay = $('#patronFinesDisplay');
+          finesDisplay.classList.remove('warning', 'good');
+          finesDisplay.classList.add(statusData.fines.total > 0 ? 'warning' : 'good');
+          const counter = $('#checkoutCounter');
+          counter.classList.remove('warning', 'blocked');
+          if (statusData.checkouts.dvds >= 5) counter.classList.add('blocked');
+          else if (statusData.checkouts.dvds >= 4) counter.classList.add('warning');
+          $('#patronStatusBar').classList.add('visible');
+        }
+      } catch(e) {}
+
+      hideLoading();
+    } catch(e) {
+      hideLoading();
+      $('#getNowError').textContent = 'Login system unavailable';
+      $('#getNowError').classList.add('visible');
+      return;
+    }
+  } else {
+    // Name only — no API call, no validation
+    currentUser = { name: input, barcode: null, id: null, nameOnly: true };
+    patronStatus = null;
+  }
+
+  // Update header
+  $('#userName').textContent = `Hello, ${currentUser.name}!`;
+  $('#userCard').textContent = currentUser.barcode ? `Card: ${currentUser.barcode}` : 'Name sign-in';
+  $('#userInfo').classList.add('visible');
+  $('#btnLogin').style.display = 'none';
+  $('#btnLogout').style.display = 'block';
+  if (!currentUser.nameOnly) $('#btnHoldsTab').style.display = 'block';
+
+  closeGetNowModal();
+  toast(`Welcome, ${currentUser.name}!`, 'success');
+  resetIdleTimer();
+
+  // Now proceed with the Get Now request
+  await requestMovie('now');
 }
 
 // Load patron holds
@@ -1585,7 +1739,17 @@ function formatDate(dateStr) {
 async function requestMovie(type) {
   if (!currentUser) {
     closeMovie();
-    showLogin();
+    if (type === 'now') {
+      showGetNowLogin();
+    } else {
+      showLogin(); // card only for holds
+    }
+    return;
+  }
+
+  // Name-only users can only do Get Now
+  if (type === 'hold' && currentUser.nameOnly) {
+    toast('Please sign in with your library card to place a hold', 'error');
     return;
   }
   
@@ -1643,7 +1807,8 @@ async function requestMovie(type) {
         console.log('Placing hold with data:', {
           patronBarcode: currentUser.barcode,
           bibRecordId: currentMovie.bibRecordId,
-          itemBarcode: currentMovie.barcode
+          itemBarcode: currentMovie.barcode,
+          dvdId: currentMovie.dvdId ?? null
         });
         
         const holdRes = await fetch('api/hold.php', {
@@ -1739,8 +1904,26 @@ async function requestMovie(type) {
 function setupEvents() {
   // On-screen keyboard setup (defined first so oskShow/oskHide are available)
   const osk = $('#oskContainer');
-  function oskShow() { osk.classList.add('visible'); $('.main').classList.add('osk-open'); }
-  function oskHide() { osk.classList.remove('visible'); $('.main').classList.remove('osk-open'); }
+  let oskTarget = $('#searchInput'); // which input the OSK types into
+  let oskMode = 'search'; // 'search' or 'getNow'
+
+  function oskShow(mode) {
+    oskMode = mode || 'search';
+    oskTarget = oskMode === 'getNow' ? $('#getNowInput') : $('#searchInput');
+    osk.classList.add('visible');
+    if (oskMode === 'search') $('.main').classList.add('osk-open');
+    // Show/hide Done button
+    $('#oskDoneBtn').style.display = oskMode === 'getNow' ? 'flex' : 'none';
+    if (oskMode === 'getNow') document.body.classList.add('getnow-osk-open');
+  }
+  function oskHide() {
+    osk.classList.remove('visible');
+    $('.main').classList.remove('osk-open');
+    document.body.classList.remove('getnow-osk-open');
+    $('#oskDoneBtn').style.display = 'none';
+    oskMode = 'search';
+    oskTarget = $('#searchInput');
+  }
 
   // searchTimeout declared here so OSK handlers can use it
   let searchTimeout;
@@ -1750,7 +1933,7 @@ function setupEvents() {
       e.preventDefault();
       key.classList.add('pressed');
       const k = key.dataset.key;
-      const input = $('#searchInput');
+      const input = oskTarget;
       const start = input.selectionStart;
       const end = input.selectionEnd;
       const val = input.value;
@@ -1777,12 +1960,30 @@ function setupEvents() {
         input.value = val.slice(0, start) + k + val.slice(end);
         input.setSelectionRange(start + 1, start + 1);
       }
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
+      if (oskMode === 'search') {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
+      } else if (oskMode === 'getNow' && k === 'DONE') {
+        oskHide();
+        doGetNowLogin();
+      }
     });
     key.addEventListener('pointerup', () => key.classList.remove('pressed'));
     key.addEventListener('pointerleave', () => key.classList.remove('pressed'));
   });
+
+  // Get Now keyboard toggle button
+  $('#btnGetNowKeyboard').onclick = () => {
+    $('#getNowNumpad').style.display = 'none';
+    $('#btnGetNowKeyboard').style.display = 'none';
+    $('#getNowInput').placeholder = 'Type your name';
+    $('#getNowInput').value = '';
+    $('#getNowError').textContent = '';
+    if (window.matchMedia('(orientation: portrait)').matches) {
+      oskShow('getNow');
+    }
+    setTimeout(() => $('#getNowInput').focus(), 100);
+  };
 
   // Tab navigation
   $$('.nav-btn').forEach(btn => {
@@ -1796,7 +1997,7 @@ function setupEvents() {
       $('#searchBar').classList.toggle('visible', btn.dataset.tab === 'search');
       if (btn.dataset.tab === 'search') {
         setTimeout(() => $('#searchInput').focus(), 100);
-        if (window.matchMedia('(orientation: portrait)').matches) oskShow();
+        if (window.matchMedia('(orientation: portrait)').matches) oskShow('search');
       } else {
         oskHide();
       }
@@ -1831,10 +2032,11 @@ function setupEvents() {
   $('#btnCancelLogin').onclick = closeLogin;
   $('#loginModal').onclick = e => { if (e.target.id === 'loginModal') closeLogin(); };
   
-  // Numpad
+  // Numpad (card-only login)
   $$('.num-btn').forEach(b => {
     b.onclick = () => {
       const n = b.dataset.n;
+      if (!n) return;
       const inp = $('#barcodeInput');
       if (n === '⌫') inp.value = inp.value.slice(0, -1);
       else if (n === 'GO') doLogin();
@@ -1844,6 +2046,30 @@ function setupEvents() {
   });
   
   $('#barcodeInput').onkeypress = e => { if (e.key === 'Enter') doLogin(); };
+
+  // Get Now modal
+  $('#btnCancelGetNow').onclick = closeGetNowModal;
+  $('#getNowModal').onclick = e => { if (e.target.id === 'getNowModal') closeGetNowModal(); };
+  $('#getNowInput').onkeypress = e => { if (e.key === 'Enter') doGetNowLogin(); };
+  $('#getNowInput').oninput = () => {
+    // Toggle numpad: show for digits-only input, hide when letters typed
+    const val = $('#getNowInput').value;
+    const isNum = /^\d*$/.test(val);
+    $('#getNowNumpad').style.display = isNum ? 'grid' : 'none';
+  };
+
+  $$('[data-gn]').forEach(b => {
+    b.onclick = () => {
+      const n = b.dataset.gn;
+      const inp = $('#getNowInput');
+      if (n === '⌫') inp.value = inp.value.slice(0, -1);
+      else if (n === 'GO') doGetNowLogin();
+      else inp.value += n;
+      inp.focus();
+      // Keep numpad visible while typing numbers
+      $('#getNowNumpad').style.display = 'grid';
+    };
+  });
   
   // Confirmation
   $('#btnConfirmOK').onclick = () => $('#confirmModal').classList.remove('visible');
