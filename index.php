@@ -212,6 +212,13 @@ body {
   .main.osk-open { height: calc(100vh - 190px); }
 }
 
+/* Shift Get Now modal up when OSK is open */
+#oskContainer.visible ~ * #getNowModal.visible,
+body.getnow-osk-open #getNowModal.visible {
+  align-items: flex-start;
+  padding-top: 30px;
+}
+
 /* Main content */
 .main {
   height: calc(100vh - 190px);
@@ -773,6 +780,7 @@ body {
     <button class="osk-key space" data-key="SPACE">SPACE</button>
     <button class="osk-key wide" data-key="APOSTROPHE">'</button>
     <button class="osk-key wide" data-key="COLON">:</button>
+    <button class="osk-key wide osk-done-btn" data-key="DONE" id="oskDoneBtn" style="display:none;background:#2e7d32;color:#fff;border-color:#1b5e20;min-width:110px;">✓ Done</button>
   </div>
 </div>
 
@@ -917,6 +925,7 @@ body {
         <button class="num-btn" data-gn="0">0</button>
         <button class="num-btn go" data-gn="GO">GO</button>
       </div>
+      <button class="btn btn-lg" id="btnGetNowKeyboard" style="background:#e8f5e9;color:#2e7d32;border:2px solid #c8e6c9;margin-bottom:8px;">⌨ Enter Name Instead</button>
       <button class="btn btn-lg btn-gray" id="btnCancelGetNow">Cancel</button>
     </div>
   </div>
@@ -1485,15 +1494,25 @@ let _pendingGetNowMovie = null;
 function showGetNowLogin(movie) {
   _pendingGetNowMovie = movie || currentMovie;
   $('#getNowInput').value = '';
+  $('#getNowInput').placeholder = 'Card number or name';
   $('#getNowError').textContent = '';
   $('#getNowError').classList.remove('visible');
   $('#getNowNumpad').style.display = 'grid';
+  $('#btnGetNowKeyboard').style.display = 'block';
   $('#getNowModal').classList.add('visible');
   setTimeout(() => $('#getNowInput').focus(), 100);
 }
 
 function closeGetNowModal() {
   $('#getNowModal').classList.remove('visible');
+  // Hide OSK if it was open for Get Now
+  const osk = $('#oskContainer');
+  if (osk.classList.contains('visible')) {
+    osk.classList.remove('visible');
+    $('.main').classList.remove('osk-open');
+    document.body.classList.remove('getnow-osk-open');
+    $('#oskDoneBtn').style.display = 'none';
+  }
   _pendingGetNowMovie = null;
 }
 
@@ -1885,8 +1904,26 @@ async function requestMovie(type) {
 function setupEvents() {
   // On-screen keyboard setup (defined first so oskShow/oskHide are available)
   const osk = $('#oskContainer');
-  function oskShow() { osk.classList.add('visible'); $('.main').classList.add('osk-open'); }
-  function oskHide() { osk.classList.remove('visible'); $('.main').classList.remove('osk-open'); }
+  let oskTarget = $('#searchInput'); // which input the OSK types into
+  let oskMode = 'search'; // 'search' or 'getNow'
+
+  function oskShow(mode) {
+    oskMode = mode || 'search';
+    oskTarget = oskMode === 'getNow' ? $('#getNowInput') : $('#searchInput');
+    osk.classList.add('visible');
+    if (oskMode === 'search') $('.main').classList.add('osk-open');
+    // Show/hide Done button
+    $('#oskDoneBtn').style.display = oskMode === 'getNow' ? 'flex' : 'none';
+    if (oskMode === 'getNow') document.body.classList.add('getnow-osk-open');
+  }
+  function oskHide() {
+    osk.classList.remove('visible');
+    $('.main').classList.remove('osk-open');
+    document.body.classList.remove('getnow-osk-open');
+    $('#oskDoneBtn').style.display = 'none';
+    oskMode = 'search';
+    oskTarget = $('#searchInput');
+  }
 
   // searchTimeout declared here so OSK handlers can use it
   let searchTimeout;
@@ -1896,7 +1933,7 @@ function setupEvents() {
       e.preventDefault();
       key.classList.add('pressed');
       const k = key.dataset.key;
-      const input = $('#searchInput');
+      const input = oskTarget;
       const start = input.selectionStart;
       const end = input.selectionEnd;
       const val = input.value;
@@ -1923,12 +1960,30 @@ function setupEvents() {
         input.value = val.slice(0, start) + k + val.slice(end);
         input.setSelectionRange(start + 1, start + 1);
       }
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
+      if (oskMode === 'search') {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
+      } else if (oskMode === 'getNow' && k === 'DONE') {
+        oskHide();
+        doGetNowLogin();
+      }
     });
     key.addEventListener('pointerup', () => key.classList.remove('pressed'));
     key.addEventListener('pointerleave', () => key.classList.remove('pressed'));
   });
+
+  // Get Now keyboard toggle button
+  $('#btnGetNowKeyboard').onclick = () => {
+    $('#getNowNumpad').style.display = 'none';
+    $('#btnGetNowKeyboard').style.display = 'none';
+    $('#getNowInput').placeholder = 'Type your name';
+    $('#getNowInput').value = '';
+    $('#getNowError').textContent = '';
+    if (window.matchMedia('(orientation: portrait)').matches) {
+      oskShow('getNow');
+    }
+    setTimeout(() => $('#getNowInput').focus(), 100);
+  };
 
   // Tab navigation
   $$('.nav-btn').forEach(btn => {
@@ -1942,7 +1997,7 @@ function setupEvents() {
       $('#searchBar').classList.toggle('visible', btn.dataset.tab === 'search');
       if (btn.dataset.tab === 'search') {
         setTimeout(() => $('#searchInput').focus(), 100);
-        if (window.matchMedia('(orientation: portrait)').matches) oskShow();
+        if (window.matchMedia('(orientation: portrait)').matches) oskShow('search');
       } else {
         oskHide();
       }
