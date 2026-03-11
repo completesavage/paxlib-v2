@@ -895,6 +895,33 @@ body {
   </div>
 </div>
 
+<!-- Get Now Modal (card OR name) -->
+<div class="modal-bg" id="getNowModal">
+  <div class="modal" style="max-width:400px;">
+    <div class="login-box">
+      <div class="login-title">Get Now</div>
+      <div class="login-sub" id="getNowSub">Enter your library card number or your name</div>
+      <input type="text" class="login-input" id="getNowInput" placeholder="Card number or name" autocomplete="off">
+      <div class="login-error" id="getNowError"></div>
+      <div class="numpad" id="getNowNumpad">
+        <button class="num-btn" data-gn="1">1</button>
+        <button class="num-btn" data-gn="2">2</button>
+        <button class="num-btn" data-gn="3">3</button>
+        <button class="num-btn" data-gn="4">4</button>
+        <button class="num-btn" data-gn="5">5</button>
+        <button class="num-btn" data-gn="6">6</button>
+        <button class="num-btn" data-gn="7">7</button>
+        <button class="num-btn" data-gn="8">8</button>
+        <button class="num-btn" data-gn="9">9</button>
+        <button class="num-btn" data-gn="⌫">⌫</button>
+        <button class="num-btn" data-gn="0">0</button>
+        <button class="num-btn go" data-gn="GO">GO</button>
+      </div>
+      <button class="btn btn-lg btn-gray" id="btnCancelGetNow">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirmation Modal -->
 <div class="modal-bg" id="confirmModal">
   <div class="modal" style="max-width:450px;">
@@ -1300,11 +1327,11 @@ async function openMovie(barcode) {
       if (isAvailable) {
         // Available: Show both Check Out Now and Place Hold
         $('#btnRequestNow').style.display = 'block';
-        $('#btnPlaceHold').style.display = 'block';
+        $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
       } else {
-        // Not available: Only show Place Hold
-        $('#btnRequestNow').style.display = 'none';
-        $('#btnPlaceHold').style.display = 'block';
+        // Not available: Get Now always visible, Place Hold for card users only
+        $('#btnRequestNow').style.display = 'block';
+        $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
       }
       
       currentMovie = m;
@@ -1315,9 +1342,8 @@ async function openMovie(barcode) {
     // Hide spinner and show error
     spinner.style.display = 'none';
     statusText.textContent = 'Error checking status';
-    // On error, only show Place Hold to be safe
-    $('#btnRequestNow').style.display = 'none';
-    $('#btnPlaceHold').style.display = 'block';
+    $('#btnRequestNow').style.display = 'block';
+    $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
   }
 }
 
@@ -1451,6 +1477,97 @@ function doLogout() {
   
   hideTimeout();
   toast('Signed out');
+}
+
+// ── Get Now modal (card OR name) ──────────────────────────────────────────────
+let _pendingGetNowMovie = null;
+
+function showGetNowLogin(movie) {
+  _pendingGetNowMovie = movie || currentMovie;
+  $('#getNowInput').value = '';
+  $('#getNowError').textContent = '';
+  $('#getNowError').classList.remove('visible');
+  $('#getNowNumpad').style.display = 'grid';
+  $('#getNowModal').classList.add('visible');
+  setTimeout(() => $('#getNowInput').focus(), 100);
+}
+
+function closeGetNowModal() {
+  $('#getNowModal').classList.remove('visible');
+  _pendingGetNowMovie = null;
+}
+
+async function doGetNowLogin() {
+  const input = $('#getNowInput').value.trim();
+  if (!input) {
+    $('#getNowError').textContent = 'Please enter your card number or name';
+    $('#getNowError').classList.add('visible');
+    return;
+  }
+
+  const isBarcode = /^\d+$/.test(input);
+
+  if (isBarcode) {
+    // Validate card via API
+    showLoading('Checking card...', 'Please wait');
+    try {
+      const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(input)}`);
+      const data = await res.json();
+      if (!data.ok || !data.patron) {
+        hideLoading();
+        $('#getNowError').textContent = 'Card not found';
+        $('#getNowError').classList.add('visible');
+        return;
+      }
+      currentUser = data.patron;
+
+      // Load status silently
+      try {
+        const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(input)}`);
+        const statusData = await statusRes.json();
+        if (statusData.ok) {
+          patronStatus = statusData;
+          $('#patronName').textContent = statusData.patronName;
+          $('#patronFines').textContent = '$' + statusData.fines.total.toFixed(2);
+          $('#dvdCount').textContent = statusData.checkouts.dvds;
+          const finesDisplay = $('#patronFinesDisplay');
+          finesDisplay.classList.remove('warning', 'good');
+          finesDisplay.classList.add(statusData.fines.total > 0 ? 'warning' : 'good');
+          const counter = $('#checkoutCounter');
+          counter.classList.remove('warning', 'blocked');
+          if (statusData.checkouts.dvds >= 5) counter.classList.add('blocked');
+          else if (statusData.checkouts.dvds >= 4) counter.classList.add('warning');
+          $('#patronStatusBar').classList.add('visible');
+        }
+      } catch(e) {}
+
+      hideLoading();
+    } catch(e) {
+      hideLoading();
+      $('#getNowError').textContent = 'Login system unavailable';
+      $('#getNowError').classList.add('visible');
+      return;
+    }
+  } else {
+    // Name only — no API call, no validation
+    currentUser = { name: input, barcode: null, id: null, nameOnly: true };
+    patronStatus = null;
+  }
+
+  // Update header
+  $('#userName').textContent = `Hello, ${currentUser.name}!`;
+  $('#userCard').textContent = currentUser.barcode ? `Card: ${currentUser.barcode}` : 'Name sign-in';
+  $('#userInfo').classList.add('visible');
+  $('#btnLogin').style.display = 'none';
+  $('#btnLogout').style.display = 'block';
+  if (!currentUser.nameOnly) $('#btnHoldsTab').style.display = 'block';
+
+  closeGetNowModal();
+  toast(`Welcome, ${currentUser.name}!`, 'success');
+  resetIdleTimer();
+
+  // Now proceed with the Get Now request
+  await requestMovie('now');
 }
 
 // Load patron holds
@@ -1603,7 +1720,17 @@ function formatDate(dateStr) {
 async function requestMovie(type) {
   if (!currentUser) {
     closeMovie();
-    showLogin();
+    if (type === 'now') {
+      showGetNowLogin();
+    } else {
+      showLogin(); // card only for holds
+    }
+    return;
+  }
+
+  // Name-only users can only do Get Now
+  if (type === 'hold' && currentUser.nameOnly) {
+    toast('Please sign in with your library card to place a hold', 'error');
     return;
   }
   
@@ -1628,6 +1755,7 @@ async function requestMovie(type) {
     const reqData = {
       movie: {
         barcode: currentMovie.barcode,
+        dvdId: currentMovie.dvdId ?? null,
         title: currentMovie.title,
         callNumber: currentMovie.callNumber,
         cover: currentMovie.cover,
@@ -1660,7 +1788,8 @@ async function requestMovie(type) {
         console.log('Placing hold with data:', {
           patronBarcode: currentUser.barcode,
           bibRecordId: currentMovie.bibRecordId,
-          itemBarcode: currentMovie.barcode
+          itemBarcode: currentMovie.barcode,
+          dvdId: currentMovie.dvdId ?? null
         });
         
         const holdRes = await fetch('api/hold.php', {
@@ -1669,7 +1798,8 @@ async function requestMovie(type) {
           body: JSON.stringify({
             patronBarcode: currentUser.barcode,
             bibRecordId: currentMovie.bibRecordId,
-            itemBarcode: currentMovie.barcode
+            itemBarcode: currentMovie.barcode,
+            dvdId: currentMovie.dvdId ?? null
           })
         });
         
@@ -1847,10 +1977,11 @@ function setupEvents() {
   $('#btnCancelLogin').onclick = closeLogin;
   $('#loginModal').onclick = e => { if (e.target.id === 'loginModal') closeLogin(); };
   
-  // Numpad
+  // Numpad (card-only login)
   $$('.num-btn').forEach(b => {
     b.onclick = () => {
       const n = b.dataset.n;
+      if (!n) return;
       const inp = $('#barcodeInput');
       if (n === '⌫') inp.value = inp.value.slice(0, -1);
       else if (n === 'GO') doLogin();
@@ -1860,6 +1991,30 @@ function setupEvents() {
   });
   
   $('#barcodeInput').onkeypress = e => { if (e.key === 'Enter') doLogin(); };
+
+  // Get Now modal
+  $('#btnCancelGetNow').onclick = closeGetNowModal;
+  $('#getNowModal').onclick = e => { if (e.target.id === 'getNowModal') closeGetNowModal(); };
+  $('#getNowInput').onkeypress = e => { if (e.key === 'Enter') doGetNowLogin(); };
+  $('#getNowInput').oninput = () => {
+    // Toggle numpad: show for digits-only input, hide when letters typed
+    const val = $('#getNowInput').value;
+    const isNum = /^\d*$/.test(val);
+    $('#getNowNumpad').style.display = isNum ? 'grid' : 'none';
+  };
+
+  $$('[data-gn]').forEach(b => {
+    b.onclick = () => {
+      const n = b.dataset.gn;
+      const inp = $('#getNowInput');
+      if (n === '⌫') inp.value = inp.value.slice(0, -1);
+      else if (n === 'GO') doGetNowLogin();
+      else inp.value += n;
+      inp.focus();
+      // Keep numpad visible while typing numbers
+      $('#getNowNumpad').style.display = 'grid';
+    };
+  });
   
   // Confirmation
   $('#btnConfirmOK').onclick = () => $('#confirmModal').classList.remove('visible');
