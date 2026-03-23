@@ -96,20 +96,21 @@ if ($method === 'POST') {
     $request = [
         'id' => generateId(),
         'movie' => [
-            'barcode' => $movie['barcode'],
-            'title' => $movie['title'] ?? 'Unknown',
-            'callNumber' => $movie['callNumber'] ?? null,
-            'cover' => $movie['cover'] ?? null,
+            'barcode'     => $movie['barcode'],
+            'dvdId'       => $movie['dvdId'] ?? null,       // ← DVD # from CSV col 1
+            'title'       => $movie['title'] ?? 'Unknown',
+            'callNumber'  => $movie['callNumber'] ?? null,
+            'cover'       => $movie['cover'] ?? null,
             'bibRecordId' => $movie['bibRecordId'] ?? null
         ],
         'patron' => [
             'barcode' => $patron['barcode'] ?? null,
-            'name' => $patron['name'] ?? 'Guest',
-            'id' => $patron['id'] ?? null
+            'name'    => $patron['name'] ?? 'Guest',
+            'id'      => $patron['id'] ?? null
         ],
-        'type' => $type,
-        'timestamp' => date('c'),
-        'completed' => false,
+        'type'        => $type,
+        'timestamp'   => date('c'),
+        'completed'   => false,
         'completedAt' => null
     ];
     
