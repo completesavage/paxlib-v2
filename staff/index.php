@@ -701,16 +701,24 @@ function renderPicker(type, list, tagsEl, listEl, searchEl) {
     </div>`).join('');
 }
 function renderMovieTable() {
-  const q = ($('#movieSearch')?.value||'').toLowerCase();
-  $('#movieBody').innerHTML = movies.filter(m => !q||(m.title||'').toLowerCase().includes(q)||m.barcode.includes(q)).map(m =>
-    `<tr>
-      <td><img src="${m.cover||NO_COVER}" onerror="this.src='${NO_COVER}'"></td>
-      <td style="font-weight:700;color:var(--green-dark);">${esc(m.dvdId||'—')}</td>
-      <td><strong>${esc(m.title)}</strong></td>
-      <td style="font-family:'DM Mono',monospace;font-size:12px;">${m.barcode}</td>
-      <td>${m.rating||'—'}</td><td>${m.callNumber||'—'}</td>
-      <td><button class="btn btn-xs btn-secondary" onclick="editMovie('${m.barcode}')">✏️ Edit</button></td>
-    </tr>`).join('');
+  const q = ($('#movieSearch')?.value || '').toLowerCase();
+
+  $('#movieBody').innerHTML = movies
+    .filter(m =>
+      !q ||
+      (m.title || '').toLowerCase().includes(q) ||
+      String(m.barcode || '').includes(q)
+    )
+    .map(m => `
+      <tr>
+        <td><img src="${m.cover||NO_COVER}" onerror="this.src='${NO_COVER}'"></td>
+        <td style="font-weight:700;color:var(--green-dark);">${esc(m.dvdId||'—')}</td>
+        <td><strong>${esc(m.title)}</strong></td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px;">${m.barcode}</td>
+        <td>${m.rating||'—'}</td><td>${m.callNumber||'—'}</td>
+        <td><button class="btn btn-xs btn-secondary" onclick="editMovie('${m.barcode}')">✏️ Edit</button></td>
+      </tr>
+    `).join('');
 }
 
 // ── ACTIONS ────────────────────────────────────────────────────────────────────
