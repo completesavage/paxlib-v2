@@ -65,8 +65,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 /* BUTTONS */
 .btn { padding: 9px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; white-space: nowrap; }
 .btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 .btn-primary { background: var(--green-dark); color: white; }
-.btn-primary:hover { background: var(--green-mid); }
+.btn-primary:hover:not(:disabled) { background: var(--green-mid); }
 .btn-secondary { background: #f5f5f5; color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { background: #ebebeb; }
 .btn-danger { background: var(--red); color: white; }
@@ -99,29 +100,24 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .req-card.new-flash { animation: newFlash 2s ease-in-out 3; }
 @keyframes newFlash { 0%,100%{box-shadow:var(--shadow-sm);} 50%{box-shadow:0 0 0 4px rgba(239,83,80,.25),var(--shadow-md);} }
 
-/* drag handle */
 .req-drag { flex-shrink: 0; width: 34px; display: flex; align-items: center; justify-content: center; cursor: grab; color: #ccc; font-size: 22px; border-right: 1px solid #f0f0f0; user-select: none; transition: color 0.15s; }
 .req-drag:hover { color: #999; }
 .req-drag:active { cursor: grabbing; }
 .is-done .req-drag { cursor: default; color: #ddd; }
 
-/* poster */
 .req-poster-wrap { flex-shrink: 0; width: 84px; background: #f5f5f5; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .req-poster { width: 84px; height: 126px; object-fit: cover; display: block; }
 
-/* body */
 .req-body { flex: 1; padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .req-top { display: flex; align-items: flex-start; gap: 9px; flex-wrap: wrap; }
 .req-title { font-size: 16px; font-weight: 700; flex: 1; min-width: 0; line-height: 1.25; }
 
-/* badges */
 .badge { flex-shrink: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; padding: 4px 10px; border-radius: 5px; display: inline-flex; align-items: center; gap: 5px; }
 .badge-dvd  { background: var(--green-dark); color: white; font-size: 14px; }
 .badge-now  { background: var(--orange-light); color: var(--orange); border: 1px solid #ffcc80; font-size: 13px; }
 .badge-hold { background: var(--blue-light); color: var(--blue); border: 1px solid #90caf9; font-size: 13px; }
 .badge-done { background: var(--green-light); color: var(--green-dark); }
 
-/* pills */
 .req-pills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; }
 .pill-call   { background: var(--green-light); color: var(--green-dark); font-weight: 600; }
@@ -129,11 +125,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .pill-card   { background: var(--purple-light); color: var(--purple); font-family: 'DM Mono', monospace; font-size: 12px; }
 .pill-name   { background: var(--gold-light); color: var(--gold); }
 
-/* time */
 .req-time { font-size: 12px; color: var(--muted); display: flex; gap: 12px; align-items: center; }
 .req-time .ago { font-weight: 700; color: #555; }
 
-/* notes */
 .req-notes-row { display: flex; flex-direction: column; gap: 5px; }
 .req-note-display { font-size: 13px; color: #555; background: var(--gold-light); border-left: 3px solid var(--gold); padding: 6px 10px; border-radius: 0 6px 6px 0; font-style: italic; display: none; }
 .req-note-display.has-note { display: block; }
@@ -142,7 +136,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .req-note-actions { display: none; gap: 6px; }
 .req-note-actions.open { display: flex; }
 
-/* actions col */
 .req-actions { flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 14px 14px; border-left: 1px solid #f0f0f0; min-width: 118px; }
 .req-done-label { font-size: 13px; color: #4caf50; font-weight: 700; text-align: center; }
 
@@ -213,7 +206,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .empty-icon { font-size:48px; margin-bottom:12px; opacity:.5; }
 .empty-title { font-size:16px; font-weight:600; color:var(--text); margin-bottom:6px; }
 
-#cacheProgress { display:none; margin-top:14px; }
+/* Progress bar */
+.progress-wrap { height:8px; background:#eee; border-radius:4px; overflow:hidden; }
+.progress-bar  { height:100%; background:#4caf50; width:0%; transition:width .4s; }
 </style>
 </head>
 <body>
@@ -367,42 +362,67 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
       </div>
     </div>
 
-    <!-- CACHE -->
+    <!-- CACHE / SYNC -->
     <div class="page" id="pageCache">
+
+      <!-- Sync from Polaris -->
       <div class="card">
-        <div class="card-head"><h3>🔄 Cache Management</h3></div>
+        <div class="card-head">
+          <h3>↓ Sync from Polaris</h3>
+          <div id="syncStatusBadge" style="font-size:12px;color:var(--muted);"></div>
+        </div>
         <div class="card-body">
-          <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">Movie data is cached locally. Availability is fetched fresh when a patron clicks a movie.</p>
-          <div class="form-group">
-            <button class="btn btn-primary" id="btnRebuildCache">🔄 Rebuild Entire Cache</button>
-            <div class="form-hint">Fetches fresh data from Polaris for all movies. May take several minutes.</div>
+          <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">
+            Pulls the current DVD collection directly from the Polaris recordset and rebuilds the movie list.
+            Run this whenever DVDs are added or removed from the collection.
+          </p>
+          <button class="btn btn-primary" id="btnSyncPolaris" style="font-size:15px;padding:12px 22px;">
+            ↓ Sync Movies from Polaris
+          </button>
+          <div id="syncProgress" style="display:none;margin-top:16px;">
+            <div class="progress-wrap"><div class="progress-bar" id="syncProgressBar"></div></div>
+            <div id="syncStatus" style="font-size:13px;color:var(--muted);margin-top:7px;"></div>
           </div>
-          <div id="cacheProgress">
-            <div style="height:8px;background:#eee;border-radius:4px;overflow:hidden;"><div id="cacheProgressBar" style="height:100%;background:#4caf50;width:0%;transition:width .3s;"></div></div>
-            <div id="cacheStatus" style="font-size:12px;color:var(--muted);margin-top:5px;"></div>
-          </div>
+        </div>
+      </div>
+
+      <!-- Availability cache -->
+      <div class="card">
+        <div class="card-head"><h3>🔄 Availability Cache</h3></div>
+        <div class="card-body">
+          <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">
+            Movie availability (In / Checked Out) is cached by the background checker on the kiosk page.
+            Click below to clear it and force a fresh check.
+          </p>
+          <button class="btn btn-secondary" id="btnResetAvail">🗑️ Reset Availability Cache</button>
+          <div class="form-hint">The kiosk will rebuild availability automatically after reset.</div>
           <hr style="margin:20px 0;border:none;border-top:1px solid var(--border);">
           <div class="form-group">
-            <label class="form-label">Refresh Single Movie</label>
+            <label class="form-label">Refresh Cover for Single Movie</label>
             <div style="display:flex;gap:8px;">
-              <input type="text" class="form-input" id="refreshBarcode" placeholder="Enter barcode" style="width:200px;">
+              <input type="text" class="form-input" id="refreshBarcode" placeholder="Enter barcode" style="width:220px;">
               <button class="btn btn-secondary" id="btnRefreshSingle">Refresh</button>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- Overrides -->
       <div class="card">
         <div class="card-head"><h3>🗂️ Data Overrides</h3></div>
         <div class="card-body">
-          <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">Movie edits are saved as overrides and take priority over API data.</p>
+          <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">
+            Movie edits (titles, covers, ratings) are saved as overrides and take priority over synced data.
+          </p>
           <button class="btn btn-danger" id="btnClearOverrides">🗑️ Clear All Overrides</button>
-          <div class="form-hint">Resets all custom titles, covers, etc. back to API data.</div>
+          <div class="form-hint">Resets all custom titles, covers, etc. back to Polaris data.</div>
         </div>
       </div>
-    </div>
 
-  </div>
-</div>
+    </div><!-- /pageCache -->
+
+  </div><!-- /content -->
+</div><!-- /main -->
 
 <!-- Edit Movie Modal -->
 <div class="modal-bg" id="editModal">
@@ -440,7 +460,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 
 <div class="toast" id="toast"></div>
 <audio id="notifySound" preload="auto">
-  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2OnqeXjHlwaHB8i5aZlol5bGVufI2dn5eKd2pkcH2OoJ+Wi3VoYW1+kqKgloZwZGFsf5Wkn5KAa2JgbIGYpp2NdmVgaH2Uo52TgW1iYGqCmaaej3RiX2V6kaCdlIJuYV5ofJSinpKBbGFeaH2WpaCQfGphXWd7k6GdlYRvY11meZOgnJWFcWVdZXiRn5yWhXNmXmR2j52ak4VzaF5jdY2bmJKGdWpeYnOLmZeRh3ZsX2Fxipear4t1Yl1gcIibm5SJeW1hX26Gk5ORiHltYV9uhpOSkYh6bWFfbYWSkZGIe21hX22EkZCQiHxtYl9thJGQkIh8bWFfbISQj4+IfG1iYGyDj46OiH1tYmBrgo6Njoh9bWJga4KOjY6IfW1iYGuCjo2NiH1tYmBrgo6NjYl9bWJga4GOjI2JfW1iYWuBjYyMiX1tYmFrgI2MjIl+bWJha4CNjIyJfm1iYWqAjIuLin5tYmJqgIyLi4p+bWJiaoSQj4+LgG9kY2yGkpGRjIJwZWRtiJSTkoyDcWZlbo2ZmJWPhnRoZnCRnJuYkolyamd0laCdmpSMdWtpe5mjoJuWj3ltbH2cpaKdmJF7b26BoKeinpl+cXCEoqagm5l/c3GGo6ehn5qAc3KHpKiioJuBdHKIpKiioZyBdXOIpKiioZyBdXOIpKiioZyBdXOIpKiioZyCdXOIpKiioZyCdXSIpKiioZyCdXSIo6ehoJuBdHSHo6ehoJuBdHOHoqagoJuBc3OGoqagn5qAc3KGoaWfnpmAcnGFoaWfnpmAcXCFoKSenpiBcXCEn6SdnZiBcG+Dn6OdnZiBcG+CnqKcnJeBb2+CnqKcnJeBb2+CnaGbm5aBbm6BnaGbm5aBbm6BnKCam5aBbm2AnKCam5WBbW2Am5+ZmpWAbW1/m5+ZmpWAbWx/mp6YmZSAbGx+mp6YmZSAbGx+mZ2XmJOAbGt9mZ2XmJOAbGt9mJyWl5KAamp8mJyWl5KAamp8l5uVlpGAamp7l5uVlpF/aml7lpqUlZB/aWl6lpqUlZB/aWh5lZmTlI9/aGh5lZmTlI9/aGh4lJiSk45/Z2d3lJiSk45/Z2d3k5eRko5+Zmd2k5eRko5+ZmZ2kpaQkY1+ZmZ1kpaQkY1+ZWV0kZWPkIx9ZWV0kZWPkIx9ZGRzkJSOj4t9ZGRzkJSOj4t9Y2NykJSOj4t9Y2NxkJONjop8Y2NxkJONjop8YmJwj5KMjYl8YmJwj5KMjYl8YWFvjpGLjIl7YWFvjpGLjIl7YWFujZCKi4h7YGBujZCKi4h7YGBtjY+JioZ6X19tjY+JioZ6X19sjI6IiYZ6X15sjI6IiYZ6X15ri42Hh4V5Xl1ri42Hh4V5XVxqi4yGhoR4XVxqioqFhYN4XFtpiomEhIN3W1tpiYiDg4J3W1poiIeCgoF2Wlpoh4aBgYB2WlpnhoWAgH91WVlnhoWAgH91WFhmhYR/f371WFhmhIN+fn10V1dlhIN+fn10V1dlg4J9fXxzVlZkg4J9fXxzVlVkgoF8fHtyVVVjgYB7e3pyVVRjgH97e3lyVFRif396enlyU1Nif395eXhxU1JhfX55eHdwUlJhfX14eHdwUVFge3x3d3ZvUFFge3x3d3ZvT1Bfen12dnVuT09fen12dnVuT05eeXt1dXRtTk5eeXt1dXRtTU1dd3pzdHNsTE1dd3pzdHNsTExcdnlycnJrS0xcdnlycnJrS0tbdXhxcXFqSkpbdXhxcXFqSUladHdwcHBpSUladHdwcG9pSEhZc3ZvbnBoSEhZc3ZvbnBoRkdYcnVubW9nRkdYcnVubW9nRUZXcXRtbG1mRUZXcXRtbG1mRERWcHNsbGxlRERWcHNsbGxlQ0NVb3JramtkQ0NVb3JramtkQkJUbnFqaWljQkJUbnFqaWljQUFTbXBpaGhiQUFTbXBpaGhiQEBSbG9oZ2dhQEBSbG9oZ2dhPz9Ra25nZmZgPz9Ra25nZmZgPj5QamxmZWVfPj5QamxmZWVfPT1PaWtlZGRePT1PaWtlZGRePTxOaGpkY2NdPDxOaGpkY2NdOzs=" type="audio/wav">
+  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2OnqeXjHlwaHB8i5aZlol5bGVufI2dn5eKd2pkcH2OoJ+Wi3VoYW1+kqKgloZwZGFsf5Wkn5KAa2JgbIGYpp2NdmVgaH2Uo52TgW1iYGqCmaaej3RiX2V6kaCdlIJuYV5ofJSinpKBbGFeaH2WpaCQfGphXWd7k6GdlYRvY11meZOgnJWFcWVdZXiRn5yWhXNmXmR2j52ak4VzaF5jdY2bmJKGdWpeYnOLmZeRh3ZsX2Fxipear4t1Yl1gcIibm5SJeW1hX26Gk5ORiHltYV9uhpOSkYh6bWFfbYWSkZGIe21hX22EkZCQiHxtYl9thJGQkIh8bWFfbISQj4+IfG1iYGyDj46OiH1tYmBrgo6Njoh9bWJga4KOjY6IfW1iYGuCjo2NiH1tYmBrgo6NjYl9bWJga4GOjI2JfW1iYWuBjYyMiX1tYmFrgI2MjIl+bWJha4CNjIyJfm1iYWqAjIuLin5tYmJqgIyLi4p+bWJiaoSQj4+LgG9kY2yGkpGRjIJwZWRtiJSTkoyDcWZlbo2ZmJWPhnRoZnCRnJuYkolyamd0laCdmpSMdWtpe5mjoJuWj3ltbH2cpaKdmJF7b26BoKeinpl+cXCEoqagm5l/c3GGo6ehn5qAc3KHpKiioJuBdHKIpKiioZyBdXOIpKiioZyBdXOIpKiioZyBdXOIpKiioZyCdXOIpKiioZyCdXSIpKiioZyCdXSIo6ehoJuBdHSHo6ehoJuBdHOHoqagoJuBc3OGoqagn5qAc3KGoaWfnpmAcnGFoaWfnpmAcXCFoKSenpiBcXCEn6SdnZiBcG+Dn6OdnZiBcG+CnqKcnJeBb2+CnqKcnJeBb2+CnaGbm5aBbm6BnaGbm5aBbm6BnKCam5aBbm2AnKCam5WBbW2Am5+ZmpWAbW1/m5+ZmpWAbWx/mp6YmZSAbGx+mp6YmZSAbGx+mZ2XmJOAbGt9mZ2XmJOAbGt9mJyWl5KAamp8mJyWl5KAamp8l5uVlpGAamp7l5uVlpF/aml7lpqUlZB/aWl6lpqUlZB/aWh5lZmTlI9/aGh5lZmTlI9/aGh4lJiSk45/Z2d3lJiSk45/Z2d3k5eRko5+Zmd2k5eRko5+ZmZ2kpaQkY1+ZmZ1kpaQkY1+ZWV0kZWPkIx9ZWV0kZWPkIx9ZGRzkJSOj4t9ZGRzkJSOj4t9Y2NykJONjop8Y2NxkJONjop8YmJwj5KMjYl8YmJwj5KMjYl8YWFvjpGLjIl7YWFvjpGLjIl7YWFujZCKi4h7YGBujZCKi4h7YGBtjY+JioZ6X19tjY+JioZ6X19sjI6IiYZ6X15sjI6IiYZ6X15ri42Hh4V5Xl1ri42Hh4V5XVxqi4yGhoR4XVxqioqFhYN4XFtpiomEhIN3W1tpiYiDg4J3W1poiIeCgoF2Wlpoh4aBgYB2WlpnhoWAgH91WVlnhoWAgH91WFhmhYR/f371WFhmhIN+fn10V1dlhIN+fn10V1dlg4J9fXxzVlZkg4J9fXxzVlVkgoF8fHtyVVVjgYB7e3pyVVRjgH97e3lyVFRif396enlyU1Nif395eXhxU1JhfX55eHdwUlJhfX14eHdwUVFge3x3d3ZvUFFge3x3d3ZvT1Bfen12dnVuT09fen12dnVuT05eeXt1dXRtTk5eeXt1dXRtTU1dd3pzdHNsTE1dd3pzdHNsTExcdnlycnJrS0xcdnlycnJrS0tbdXhxcXFqSkpbdXhxcXFqSUladHdwcHBpSUladHdwcG9pSEhZc3ZvbnBoSEhZc3ZvbnBoRkdYcnVubW9nRkdYcnVubW9nRUZXcXRtbG1mRUZXcXRtbG1mRERWcHNsbGxlRERWcHNsbGxlQ0NVb3JramtkQ0NVb3JramtkQkJUbnFqaWljQkJUbnFqaWljQUFTbXBpaGhiQUFTbXBpaGhiQEBSbG9oZ2dhQEBSbG9oZ2dhPz9Ra25nZmZgPz9Ra25nZmZgPj5QamxmZWVfPj5QamxmZWVfPT1PaWtlZGRePT1PaWtlZGRePTxOaGpkY2NdPDxOaGpkY2NdOzs=" type="audio/wav">
 </audio>
 
 <script>
@@ -454,7 +474,7 @@ let arrivalsBarcodes  = <?php echo json_encode($settings['newArrivals'] ?? []); 
 let autoRefreshTimer  = null;
 let lastPendingCount  = 0;
 let showDone          = false;
-let localNotes        = {}; // id => note text, persists across re-renders
+let localNotes        = {};
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
@@ -464,6 +484,7 @@ async function init() {
   renderMovieTable();
   setupEvents();
   startAutoRefresh();
+  checkSyncStatus();
 }
 
 // ── DATA ──────────────────────────────────────────────────────────────────────
@@ -487,7 +508,6 @@ async function loadRequests() {
       $('#notifySound').play().catch(()=>{});
     }
     lastPendingCount = newPending;
-    // Seed localNotes from server on first load
     (d.requests || []).forEach(r => {
       if (r.notes && localNotes[r.id] === undefined) localNotes[r.id] = r.notes;
     });
@@ -532,13 +552,10 @@ function renderRequests() {
     return `
 <div class="req-card ${r.completed?'is-done':''} ${isHold?'is-hold':''} ${isNew?'new-flash':''}"
      data-id="${r.id}" draggable="${!r.completed}">
-
   <div class="req-drag" title="Drag to reorder">⠿</div>
-
   <div class="req-poster-wrap">
     <img class="req-poster" src="${esc(r.movie?.cover||NO_COVER)}" onerror="this.src='${NO_COVER}'" alt="">
   </div>
-
   <div class="req-body">
     <div class="req-top">
       <div class="req-title">${esc(r.movie?.title||'Unknown')}</div>
@@ -546,20 +563,17 @@ function renderRequests() {
       <span class="badge ${isHold?'badge-hold':'badge-now'}">${isHold?'📌 Hold':'🎬 Get Now'}</span>
       ${r.completed ? `<span class="badge badge-done">✅ Done</span>` : ''}
     </div>
-
     <div class="req-pills">
       ${call     ? `<span class="pill pill-call">📍 ${esc(call)}</span>` : ''}
       <span class="pill pill-patron">👤 ${esc(pName)}</span>
       ${pBarcode ? `<span class="pill pill-card">🪪 ${esc(pBarcode)}</span>`
                  : `<span class="pill pill-name">✍️ Name sign-in</span>`}
     </div>
-
     <div class="req-time">
       <span class="ago">${timeAgo(r.timestamp)}</span>
       <span>at ${fmtTime(r.timestamp)}</span>
       ${r.completed && r.completedAt ? `<span>· completed ${timeAgo(r.completedAt)}</span>` : ''}
     </div>
-
     <div class="req-notes-row">
       <div class="req-note-display ${note?'has-note':''}" id="noteDisplay_${r.id}">${note ? '📝 '+esc(note) : ''}</div>
       <textarea class="req-note-input" id="noteInput_${r.id}" rows="2"
@@ -570,7 +584,6 @@ function renderRequests() {
       </div>
     </div>
   </div>
-
   <div class="req-actions">
     ${!r.completed
       ? `<button class="btn btn-sm btn-primary" onclick="completeReq('${r.id}')">✅ Done</button>`
@@ -648,9 +661,7 @@ function attachDrag() {
     card.addEventListener('drop', e => {
       e.preventDefault();
       card.classList.remove('drag-over');
-      if (dragSrcId && dragSrcId !== card.dataset.id) {
-        reorder(dragSrcId, card.dataset.id);
-      }
+      if (dragSrcId && dragSrcId !== card.dataset.id) reorder(dragSrcId, card.dataset.id);
     });
   });
 }
@@ -702,13 +713,8 @@ function renderPicker(type, list, tagsEl, listEl, searchEl) {
 }
 function renderMovieTable() {
   const q = ($('#movieSearch')?.value || '').toLowerCase();
-
   $('#movieBody').innerHTML = movies
-    .filter(m =>
-      !q ||
-      (m.title || '').toLowerCase().includes(q) ||
-      String(m.barcode || '').includes(q)
-    )
+    .filter(m => !q || (m.title||'').toLowerCase().includes(q) || String(m.barcode||'').includes(q))
     .map(m => `
       <tr>
         <td><img src="${m.cover||NO_COVER}" onerror="this.src='${NO_COVER}'"></td>
@@ -717,8 +723,76 @@ function renderMovieTable() {
         <td style="font-family:'DM Mono',monospace;font-size:12px;">${m.barcode}</td>
         <td>${m.rating||'—'}</td><td>${m.callNumber||'—'}</td>
         <td><button class="btn btn-xs btn-secondary" onclick="editMovie('${m.barcode}')">✏️ Edit</button></td>
-      </tr>
-    `).join('');
+      </tr>`).join('');
+}
+
+// ── SYNC FROM POLARIS ──────────────────────────────────────────────────────────
+async function checkSyncStatus() {
+  try {
+    const d = await fetch('../api/sync-movies.php').then(r => r.json());
+    const badge = $('#syncStatusBadge');
+    if (!badge) return;
+    if (d.running) {
+      badge.textContent = '⏳ Sync in progress…';
+      badge.style.color = '#1565c0';
+    } else if (d.meta) {
+      const ago = timeAgo(d.meta.lastSync);
+      badge.textContent = `Last sync: ${ago} · ${d.meta.count} movies`;
+      badge.style.color = '#4caf50';
+    } else {
+      badge.textContent = '⚠️ Never synced — using CSV fallback if available';
+      badge.style.color = '#e65100';
+    }
+  } catch(e) {}
+}
+
+async function syncFromPolaris() {
+  if (!confirm('This will re-fetch all DVDs from Polaris and rebuild the movie list.\n\nThis may take 30–60 seconds depending on collection size. Continue?')) return;
+
+  const btn = $('#btnSyncPolaris');
+  btn.disabled = true;
+  btn.textContent = '⏳ Syncing…';
+  $('#syncProgress').style.display = 'block';
+  $('#syncProgressBar').style.width = '5%';
+  $('#syncStatus').textContent = 'Connecting to Polaris…';
+
+  let fakeProgress = 5;
+  const msgs = ['Authenticating…', 'Fetching records…', 'Loading page 2…', 'Loading page 3…', 'Processing titles…', 'Building movie list…', 'Almost done…'];
+  let msgIdx = 0;
+  const progressTimer = setInterval(() => {
+    if (fakeProgress < 88) {
+      fakeProgress += Math.random() * 7 + 2;
+      $('#syncProgressBar').style.width = Math.min(fakeProgress, 88) + '%';
+      $('#syncStatus').textContent = msgs[Math.min(msgIdx++, msgs.length - 1)];
+    }
+  }, 800);
+
+  try {
+    const d = await fetch('../api/sync-movies.php', { method: 'POST' }).then(r => r.json());
+    clearInterval(progressTimer);
+
+    if (d.ok) {
+      $('#syncProgressBar').style.width = '100%';
+      $('#syncStatus').textContent = `✅ Synced ${d.count} movies successfully!`;
+      toast(`✅ Synced ${d.count} movies from Polaris!`, 'success');
+      await loadMovies();
+      renderMovieTable();
+      renderPickers();
+      checkSyncStatus();
+    } else {
+      $('#syncProgressBar').style.width = '0%';
+      $('#syncStatus').textContent = '❌ Sync failed: ' + (d.error || 'Unknown error');
+      toast('Sync failed: ' + (d.error || 'Unknown'), 'error');
+    }
+  } catch(e) {
+    clearInterval(progressTimer);
+    $('#syncProgressBar').style.width = '0%';
+    $('#syncStatus').textContent = '❌ Error: ' + e.message;
+    toast('Sync error: ' + e.message, 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '↓ Sync Movies from Polaris';
 }
 
 // ── ACTIONS ────────────────────────────────────────────────────────────────────
@@ -757,9 +831,9 @@ async function saveSettings() {
 }
 function editMovie(bc) {
   const m = movieMap[bc]||{barcode:bc};
-  $('#editBarcode').value=$editTitle_val=bc; $('#editTitle').value=m.title||''; $('#editRating').value=m.rating||'';
+  $('#editBarcode').value=bc; $('#editTitle').value=m.title||''; $('#editRating').value=m.rating||'';
   $('#editCallNumber').value=m.callNumber||''; $('#editLocation').value=m.location||''; $('#editDescription').value=m.description||'';
-  $('#editCoverPreview').src=m.cover||NO_COVER; $('#editBarcode').value=bc;
+  $('#editCoverPreview').src=m.cover||NO_COVER;
   $('#editModal').classList.add('visible');
 }
 async function saveMovie() {
@@ -777,15 +851,6 @@ async function uploadCover(file) {
   const d=await fetch('../api/upload.php',{method:'POST',body:fd}).then(r=>r.json());
   if(d.ok){$('#editCoverPreview').src=d.url;toast('Image uploaded!','success');}else toast('Upload failed: '+d.error,'error');
 }
-async function rebuildCache() {
-  if(!confirm('This may take several minutes. Continue?')) return;
-  $('#cacheProgress').style.display='block'; $('#cacheProgressBar').style.width='0%'; $('#cacheStatus').textContent='Starting…';
-  try {
-    const d=await fetch('../api/movies.php?action=rebuild',{method:'PUT'}).then(r=>r.json());
-    if(d.ok){$('#cacheProgressBar').style.width='100%';$('#cacheStatus').textContent=`Done! Processed ${d.processed} movies.`;toast('Cache rebuilt!','success');await loadMovies();renderMovieTable();}
-    else{$('#cacheStatus').textContent='Error: '+(d.error||'Unknown');toast('Failed','error');}
-  }catch(e){$('#cacheStatus').textContent='Error: '+e.message;toast('Failed','error');}
-}
 async function refreshSingle() {
   const bc=$('#refreshBarcode').value.trim(); if(!bc){toast('Enter a barcode','error');return;}
   const d=await fetch(`../api/movies.php?action=refresh&barcode=${encodeURIComponent(bc)}`,{method:'PUT'}).then(r=>r.json());
@@ -799,26 +864,41 @@ function setupEvents() {
     $$('.page').forEach(p=>p.classList.remove('active'));
     document.getElementById('page'+n.dataset.page.charAt(0).toUpperCase()+n.dataset.page.slice(1))?.classList.add('active');
     $('#pageTitle').textContent = n.textContent.replace(/\d/g,'').trim();
+    if (n.dataset.page === 'cache') checkSyncStatus();
   });
+
   $('#btnRefresh').onclick   = loadRequests;
   $('#chkShowDone').onchange = e => { showDone=e.target.checked; renderRequests(); };
   $('#btnClearDone').onclick = async () => {
     if(!confirm('Remove all completed requests?')) return;
     await fetch('../api/requests.php?clearCompleted=true',{method:'DELETE'}); toast('Cleared'); loadRequests();
   };
+
   $('#featuredSearch').oninput = () => renderPicker('featured',featuredBarcodes,'#featuredTags','#featuredList','#featuredSearch');
   $('#arrivalsSearch').oninput  = () => renderPicker('arrivals',arrivalsBarcodes,'#arrivalsTags','#arrivalsList','#arrivalsSearch');
   $('#btnSaveFeatured').onclick  = () => savePicker('featured');
   $('#btnSaveArrivals').onclick  = () => savePicker('arrivals');
   $('#movieSearch').oninput     = renderMovieTable;
   $('#btnSaveSettings').onclick  = saveSettings;
-  $('#btnRebuildCache').onclick  = rebuildCache;
+
+  // Sync / Cache page
+  $('#btnSyncPolaris').onclick = syncFromPolaris;
+  $('#btnResetAvail').onclick  = async () => {
+    if (!confirm('Reset availability cache? The kiosk will rebuild it automatically.')) return;
+    try {
+      const d = await fetch('../api/reset-cache.php').then(r => r.json());
+      if (d.ok) toast('Availability cache reset!', 'success');
+      else toast('Reset failed', 'error');
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  };
   $('#btnRefreshSingle').onclick = refreshSingle;
   $('#btnClearOverrides').onclick = async () => {
     if(!confirm('Clear ALL custom movie edits?')) return;
     await fetch('../api/settings.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_clearOverrides:true})});
     toast('Overrides cleared','success'); await loadMovies(); renderMovieTable();
   };
+
+  // Edit modal
   $('#btnCloseEdit').onclick  = () => $('#editModal').classList.remove('visible');
   $('#btnCancelEdit').onclick = () => $('#editModal').classList.remove('visible');
   $('#btnSaveEdit').onclick   = saveMovie;
@@ -837,7 +917,6 @@ function toast(msg,type='') {
 }
 function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 
-let $editTitle_val = ''; // temp var to avoid scoping issue
 init();
 </script>
 </body>
