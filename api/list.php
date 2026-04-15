@@ -1,79 +1,77 @@
 <?php
 /**
  * api/list.php
- *
- * Returns the list of DVDs.
- * Source priority:
- *   1. data/movies_list.json  (built by sync-movies.php from Polaris recordset)
- *   2. dvds.csv               (legacy fallback)
+ * 
+ * Returns the list of DVDs from the CSV file.
+ * Optionally loads cached cover URLs if available.
  */
 
 require __DIR__ . '/../config.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: public, max-age=300');
+header('Cache-Control: public, max-age=300'); // Cache for 5 minutes
 
-$dataDir   = __DIR__ . '/../data';
-$listFile  = "$dataDir/movies_list.json";
-$csvPath   = __DIR__ . '/../dvds.csv';
-$cachePath = "$dataDir/covers_cache.json";
-$noCover   = defined('NO_COVER_PATH') ? NO_COVER_PATH : '/img/no-cover.svg';
+// Path to your CSV and cache file
+$csvPath = __DIR__ . '/../dvds.csv';
+$cachePath = __DIR__ . '/../data/covers_cache.json';
 
-// ── Try synced list first ──────────────────────────────────────────────────────
-if (file_exists($listFile)) {
-    $movies = json_decode(file_get_contents($listFile), true);
-
-    if (is_array($movies) && !empty($movies) && isset($movies[0]['barcode'])) {
-        // Apply cover cache for any movies missing a cover
-        $coverCache = file_exists($cachePath)
-            ? (json_decode(file_get_contents($cachePath), true) ?: [])
-            : [];
-
-        foreach ($movies as &$m) {
-            if (empty($m['cover'])) {
-                $m['cover'] = $coverCache[$m['barcode']] ?? $noCover;
-            }
-        }
-        unset($m);
-
-        echo json_encode([
-            'ok'     => true,
-            'items'  => $movies,
-            'count'  => count($movies),
-            'source' => 'polaris',
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-}
-
-// ── Fallback: read from dvds.csv ───────────────────────────────────────────────
 if (!file_exists($csvPath)) {
-    echo json_encode(['ok' => false, 'error' => 'No movie data found. Please run a sync from the Staff Dashboard.', 'items' => []]);
+    echo json_encode([
+        'ok'    => false,
+        'error' => 'dvds.csv not found',
+        'items' => []
+    ]);
     exit;
 }
 
 $fh = fopen($csvPath, 'r');
+$items = [];
+
 if ($fh === false) {
-    echo json_encode(['ok' => false, 'error' => 'Unable to open dvds.csv', 'items' => []]);
+    echo json_encode([
+        'ok'    => false,
+        'error' => 'unable to open dvds.csv',
+        'items' => []
+    ]);
     exit;
 }
 
-$coverCache = file_exists($cachePath)
-    ? (json_decode(file_get_contents($cachePath), true) ?: [])
-    : [];
+// Load cover cache if exists
+$coverCache = [];
+if (file_exists($cachePath)) {
+    $cacheJson = file_get_contents($cachePath);
+    $coverCache = json_decode($cacheJson, true) ?: [];
+}
 
-$items = [];
+$noCover = defined('NO_COVER_PATH') ? NO_COVER_PATH : '/img/no-cover.svg';
+
 while (($row = fgetcsv($fh)) !== false) {
-    if (count($row) < 3) continue;
+    // Expected columns:
+    // 0 = id
+    // 1 = title
+    // 2 = barcode
+    // 3 = rating (optional)
+    // 4 = sort title (unused)
+    // 5 = short sort title (unused)
+
+    if (count($row) < 3) {
+        continue;
+    }
+
     $id      = trim($row[0]);
     $title   = trim($row[1]);
     $barcode = trim($row[2]);
     $rating  = isset($row[3]) ? trim($row[3]) : '';
-    if ($barcode === '' || $title === '') continue;
-    $cover = $coverCache[$barcode] ?? $noCover;
+
+    if ($barcode === '' || $title === '') {
+        continue;
+    }
+
+    // Check cache for cover URL
+    $cover = isset($coverCache[$barcode]) ? $coverCache[$barcode] : $noCover;
+
     $items[] = [
         'id'         => $id,
-        'dvdId'      => $id,
         'title'      => $title,
         'barcode'    => $barcode,
         'rating'     => normalizeRating($rating),
@@ -81,19 +79,36 @@ while (($row = fgetcsv($fh)) !== false) {
         'cover'      => $cover,
     ];
 }
+
 fclose($fh);
 
-usort($items, fn($a, $b) => strcasecmp($a['title'], $b['title']));
+// Sort A-Z by title (stable sort)
+usort($items, function ($a, $b) {
+    return strcasecmp($a['title'], $b['title']);
+});
 
 echo json_encode([
-    'ok'     => true,
-    'items'  => $items,
-    'count'  => count($items),
-    'source' => 'csv',
+    'ok'    => true,
+    'items' => $items,
+    'count' => count($items)
 ], JSON_UNESCAPED_UNICODE);
 
+/**
+ * Normalize rating strings to consistent format
+ */
 function normalizeRating($rating) {
     $rating = strtoupper(trim($rating));
-    $map = ['PG13'=>'PG-13','PG 13'=>'PG-13','NC17'=>'NC-17','NC 17'=>'NC-17','NR'=>'NR','NOT RATED'=>'NR','UNRATED'=>'NR'];
-    return $map[$rating] ?? $rating;
+    
+    // Map common variations
+    $map = [
+        'PG13' => 'PG-13',
+        'PG 13' => 'PG-13',
+        'NC17' => 'NC-17',
+        'NC 17' => 'NC-17',
+        'NR' => 'NR',
+        'NOT RATED' => 'NR',
+        'UNRATED' => 'NR',
+    ];
+    
+    return isset($map[$rating]) ? $map[$rating] : $rating;
 }
