@@ -75,17 +75,16 @@ if (empty($bibRecordId) && empty($itemBarcode)) {
 try {
     $api = new PolarisAPI();
 
-    // If item barcode is given but no bibRecordId, look it up
-    if (empty($bibRecordId) && !empty($itemBarcode)) {
-        error_log("Looking up item by barcode: $itemBarcode");
+    // Resolve bibliographic record from item barcode (most reliable)
+    if (!empty($itemBarcode)) {
+        error_log("Looking up bib record via item barcode: $itemBarcode");
         $itemResult = $api->getItemByBarcode($itemBarcode);
-        error_log("Item lookup result: " . print_r($itemResult, true));
 
         if ($itemResult['ok'] && isset($itemResult['data']['AssociatedBibRecordID'])) {
             $bibRecordId = $itemResult['data']['AssociatedBibRecordID'];
-            error_log("Found bib record ID: $bibRecordId");
-        } else {
-            error_log("ERROR: Item not found");
+            error_log("Found bib record ID from item: $bibRecordId");
+        } elseif (empty($bibRecordId)) {
+            error_log("ERROR: Item not found and no bibRecordId provided");
             http_response_code(404);
             echo json_encode([
                 'ok' => false,
@@ -94,6 +93,13 @@ try {
             ]);
             exit;
         }
+    }
+
+    if (empty($bibRecordId)) {
+        error_log("ERROR: Could not resolve bib record ID");
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Could not resolve bibliographic record for hold']);
+        exit;
     }
     
     // Lookup patron ID from barcode
