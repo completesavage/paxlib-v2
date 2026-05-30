@@ -6,6 +6,8 @@
   "showArrivals": true,
   "sound": true,
   "autoRefresh": true,
+  "autoSyncMovies": true,
+  "syncIntervalMinutes": 15,
   "featured": [],
   "newArrivals": []
 }
