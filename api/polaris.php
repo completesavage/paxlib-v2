@@ -288,6 +288,11 @@ class PolarisAPI {
     /**
      * Determine if a circulation status means the item is available
      */
+    public function getRecordSetContents($recordSetId, $startIndex = 0, $numRecords = 0) {
+    $path = "polaris/{$this->orgId}/{$this->workstationId}/recordsets/{$recordSetId}/records"
+          . "?startIndex={$startIndex}&numRecords={$numRecords}";
+    return $this->apiRequest('GET', $path);
+    }
     private function isStatusAvailable($status) {
         $status = strtolower($status);
         
