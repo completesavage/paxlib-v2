@@ -3,7 +3,7 @@
  * Polaris API Helper
  * Handles authentication, patron lookup, item lookup, and hold placement
  */
-
+define('DVD_RECORDSET_ID', 473530);
 require_once __DIR__ . '/../config.php';
 
 class PolarisAPI {
