@@ -1,2077 +1,1044 @@
 <?php
-require_once __DIR__ . '/config.php';
-
-// Load settings
-$settingsFile = __DIR__ . '/data/settings.json';
+require_once __DIR__ . '/../config.php';
+$settingsFile = __DIR__ . '/../data/settings.json';
 $settings = file_exists($settingsFile) ? json_decode(file_get_contents($settingsFile), true) : [];
-$libraryName = $settings['libraryName'] ?? 'Paxton Carnegie Library';
-$timeout = $settings['timeout'] ?? 60;
-$warning = $settings['warning'] ?? 15;
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title><?php echo htmlspecialchars($libraryName); ?> — DVD Collection</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff Dashboard — Paxton Carnegie Library</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+:root {
+  --green-dark:  #1b5e20;
+  --green-mid:   #2e7d32;
+  --green-light: #e8f5e9;
+  --green-pale:  #f1f8f1;
+  --blue:        #1565c0;
+  --blue-light:  #e3f2fd;
+  --orange:      #e65100;
+  --orange-light:#fff3e0;
+  --red:         #c62828;
+  --gold:        #f57f17;
+  --gold-light:  #fff8e1;
+  --purple:      #6a1b9a;
+  --purple-light:#f3e5f5;
+  --border:      #e0e0e0;
+  --bg:          #f4f6f4;
+  --card:        #ffffff;
+  --text:        #1a1a1a;
+  --muted:       #666;
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:   0 4px 16px rgba(0,0,0,0.1);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.14);
+  --radius:      10px;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
-body {
-  font-family: 'Inter', -apple-system, sans-serif;
-  background: #f8f9fa;
-  color: #333;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; user-select: text; -webkit-user-select: text; }
+.selectable, .table td, .table th, .req-title, .req-note-display, .pill .copy-text { user-select: text; -webkit-user-select: text; cursor: text; }
+.copy-btn { background: rgba(0,0,0,0.06); border: none; border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; margin-left: 4px; vertical-align: middle; opacity: 0.7; transition: opacity 0.15s; flex-shrink: 0; }
+.copy-btn:hover { opacity: 1; background: rgba(0,0,0,0.12); }
+.nav-item, .btn, .req-drag { user-select: none; -webkit-user-select: none; }
 
-/* Header */
-.header {
-  background: linear-gradient(135deg, #1b5e20 0%, #388e3c 100%);
-  color: white;
-  padding: 18px 25px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.logo { font-size: 24px; font-weight: 700; }
-.logo-sub { font-size: 14px; opacity: 0.9; }
-.user-area { display: flex; align-items: center; gap: 12px; }
-.user-info { text-align: right; display: none; }
-.user-info.visible { display: block; }
-.user-name { font-weight: 600; font-size: 16px; }
-.user-card { font-size: 12px; opacity: 0.9; }
-.btn {
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  transition: all 0.15s;
-}
+/* SIDEBAR */
+.sidebar { width: 230px; background: var(--green-dark); color: white; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.sidebar-logo { padding: 22px 18px 18px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+.sidebar-logo h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+.sidebar-logo p  { font-size: 11px; opacity: 0.6; margin-top: 2px; }
+.nav-section { padding: 16px 18px 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.45); font-weight: 600; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 18px; color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13.5px; font-weight: 500; cursor: pointer; border: none; background: none; width: 100%; text-align: left; transition: background 0.15s, color 0.15s; border-left: 3px solid transparent; }
+.nav-item .nav-icon { font-size: 18px; flex-shrink: 0; }
+.nav-item:hover { background: rgba(255,255,255,0.08); color: white; }
+.nav-item.active { background: rgba(255,255,255,0.14); color: white; border-left-color: #a5d6a7; }
+.nav-badge { margin-left: auto; background: #ef5350; color: white; padding: 2px 7px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+
+/* MAIN */
+.main { margin-left: 230px; flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
+.topbar { background: var(--card); padding: 14px 28px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 200; box-shadow: var(--shadow-sm); }
+.topbar h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--green-dark); }
+.topbar-right { display: flex; gap: 10px; align-items: center; }
+.content { padding: 24px 28px; flex: 1; }
+
+/* PAGES */
+.page { display: none; }
+.page.active { display: block; }
+
+/* BUTTONS */
+.btn { padding: 9px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; white-space: nowrap; }
 .btn:active { transform: scale(0.97); }
-.btn-white { background: white; color: #1b5e20; }
-.btn-white:hover { background: #e8f5e9; }
-.btn-outline { background: transparent; color: white; border: 2px solid rgba(255,255,255,0.8); }
-.btn-outline:hover { background: rgba(255,255,255,0.1); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-primary { background: var(--green-dark); color: white; }
+.btn-primary:hover:not(:disabled) { background: var(--green-mid); }
+.btn-secondary { background: #f5f5f5; color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: #ebebeb; }
+.btn-danger { background: var(--red); color: white; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { background: #f5f5f5; color: var(--text); }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-xs { padding: 4px 9px; font-size: 11px; border-radius: 5px; }
 
-/* Navigation */
-.nav {
-  background: white;
-  border-bottom: 1px solid #e0e0e0;
-  display: flex;
-  padding: 0 20px;
-}
-.nav-btn {
-  padding: 14px 24px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #666;
-  background: none;
-  border: none;
-  border-bottom: 3px solid transparent;
-  cursor: pointer;
-}
-.nav-btn:hover { color: #2e7d32; background: #f5f5f5; }
-.nav-btn.active { color: #1b5e20; border-bottom-color: #1b5e20; }
+/* STATS */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+.stat { background: var(--card); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-sm); border: 1px solid var(--border); }
+.stat-val { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; color: var(--green-dark); line-height: 1; }
+.stat-lbl { font-size: 12px; color: var(--muted); margin-top: 5px; font-weight: 500; }
 
-/* Filter Bar */
-.filter-bar {
-  background: white;
-  border-bottom: 2px solid #e0e0e0;
-  padding: 15px 20px;
-  display: flex;
-  gap: 15px;
-  align-items: center;
-}
-.filter-btn {
-  flex: 1;
-  max-width: 350px;
-  padding: 18px 24px;
-  font-size: 18px;
-  font-weight: 700;
-  border-radius: 10px;
-  border: 3px solid #ddd;
-  background: white;
-  color: #666;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-.filter-btn:hover {
-  background: #f5f5f5;
-  border-color: #bbb;
-}
-.filter-btn.active {
-  background: #2e7d32;
-  color: white;
-  border-color: #2e7d32;
-}
-.filter-btn .count {
-  background: rgba(0,0,0,0.15);
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 16px;
-  font-weight: 700;
-}
-.filter-btn.active .count {
-  background: rgba(255,255,255,0.25);
-}
+/* CARD */
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--border); margin-bottom: 20px; overflow: hidden; }
+.card-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: #fafafa; }
+.card-head h3 { font-size: 15px; font-weight: 700; }
+.card-body { padding: 18px; }
 
-/* Unavailable movie styling */
-.movie-card.unavailable {
-  opacity: 0.6;
-}
-.movie-card.unavailable .movie-poster {
-  filter: grayscale(100%);
-}
-.movie-card.unavailable:hover {
-  opacity: 0.8;
-}
+/* REQUEST LIST */
+.req-list { display: flex; flex-direction: column; gap: 12px; }
 
-/* Search bar */
-.search-bar {
-  background: white;
-  padding: 12px 20px;
-  border-bottom: 1px solid #e0e0e0;
-  display: none;
-}
-.search-bar.visible { display: block; }
-.search-input {
-  width: 100%;
-  max-width: 500px;
-  padding: 12px 16px;
-  font-size: 16px;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  outline: none;
-}
-.search-input:focus { border-color: #2e7d32; }
+.req-card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); border-left: 5px solid var(--orange); display: flex; align-items: stretch; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s; }
+.req-card:hover { box-shadow: var(--shadow-md); }
+.req-card.is-hold { border-left-color: var(--blue); }
+.req-card.is-done { border-left-color: #4caf50; opacity: 0.6; }
+.req-card.drag-over { outline: 3px dashed var(--green-mid); outline-offset: -2px; background: var(--green-pale); }
+.req-card.dragging  { opacity: 0.35; }
+.req-card.new-flash { animation: newFlash 2s ease-in-out 3; }
+@keyframes newFlash { 0%,100%{box-shadow:var(--shadow-sm);} 50%{box-shadow:0 0 0 4px rgba(239,83,80,.25),var(--shadow-md);} }
 
-/* On-screen keyboard */
-#oskContainer {
-  display: none;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: #f1f8f1;
-  padding: 14px 12px 18px;
-  z-index: 9999;
-  box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
-  border-top: 4px solid #2e7d32;
-}
-#oskContainer.visible { display: block; }
-.osk-row {
-  display: flex;
-  justify-content: center;
-  gap: 7px;
-  margin-bottom: 7px;
-}
-.osk-key {
-  background: #fff;
-  color: #1a1a1a;
-  border: 2px solid #c8e6c9;
-  border-radius: 10px;
-  font-size: 26px;
-  font-weight: 700;
-  min-width: 72px;
-  height: 70px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.08s, transform 0.08s;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-  box-shadow: 0 3px 0 #c8e6c9;
-}
-.osk-key:active, .osk-key.pressed {
-  background: #2e7d32;
-  color: #fff;
-  border-color: #1b5e20;
-  box-shadow: 0 1px 0 #1b5e20;
-  transform: translateY(2px);
-}
-.osk-key.wide { min-width: 110px; font-size: 20px; }
-.osk-key.space { min-width: 380px; font-size: 18px; letter-spacing: 2px; color: #555; }
-.osk-key.space:active, .osk-key.space.pressed { color: #fff; }
-.osk-key.backspace { background: #fff3f3; border-color: #ffcdd2; box-shadow: 0 3px 0 #ffcdd2; color: #c62828; min-width: 110px; }
-.osk-key.backspace:active, .osk-key.backspace.pressed { background: #c62828; color: #fff; border-color: #b71c1c; box-shadow: 0 1px 0 #b71c1c; }
-.osk-key.clear-btn { background: #fff8e1; border-color: #ffe082; box-shadow: 0 3px 0 #ffe082; color: #f57f17; min-width: 110px; font-size: 20px; }
-.osk-key.clear-btn:active, .osk-key.clear-btn.pressed { background: #f57f17; color: #fff; border-color: #e65100; box-shadow: 0 1px 0 #e65100; }
+.req-drag { flex-shrink: 0; width: 34px; display: flex; align-items: center; justify-content: center; cursor: grab; color: #ccc; font-size: 22px; border-right: 1px solid #f0f0f0; user-select: none; transition: color 0.15s; }
+.req-drag:hover { color: #999; }
+.req-drag:active { cursor: grabbing; }
+.is-done .req-drag { cursor: default; color: #ddd; }
 
-@media (orientation: landscape) {
-  #oskContainer { display: none !important; }
-  .main.osk-open { height: calc(100vh - 190px); }
-}
+.req-poster-wrap { flex-shrink: 0; width: 84px; background: #f5f5f5; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.req-poster { width: 84px; height: 126px; object-fit: cover; display: block; }
 
-/* Shift Get Now modal up when OSK is open */
-#oskContainer.visible ~ * #getNowModal.visible,
-body.getnow-osk-open #getNowModal.visible {
-  align-items: flex-start;
-  padding-top: 30px;
-}
+.req-body { flex: 1; padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.req-top { display: flex; align-items: flex-start; gap: 9px; flex-wrap: wrap; }
+.req-title { font-size: 16px; font-weight: 700; flex: 1; min-width: 0; line-height: 1.25; }
 
-/* Main content */
-.main {
-  height: calc(100vh - 190px);
-  overflow-y: auto;
-  padding: 20px 0;
-}
-.main.osk-open {
-  height: calc(100vh - 190px - 310px);
-}
-.section { display: none; }
-.section.active { display: block; }
+.badge { flex-shrink: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; padding: 4px 10px; border-radius: 5px; display: inline-flex; align-items: center; gap: 5px; }
+.badge-dvd  { background: var(--green-dark); color: white; font-size: 14px; }
+.badge-now  { background: var(--orange-light); color: var(--orange); border: 1px solid #ffcc80; font-size: 13px; }
+.badge-hold { background: var(--blue-light); color: var(--blue); border: 1px solid #90caf9; font-size: 13px; }
+.badge-done { background: var(--green-light); color: var(--green-dark); }
 
-/* Category row (horizontal scroll) - FIXED: Show 4 cards, scroll horizontally */
-.category { margin-bottom: 25px; }
-.category-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1b5e20;
-  padding: 0 20px 12px;
-}
-.category-scroll {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: calc(25% - 12px); /* Show exactly 4 cards */
-  gap: 15px;
-  overflow-x: auto;
-  padding: 0 20px 10px;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-}
-.category-scroll::-webkit-scrollbar { height: 8px; }
-.category-scroll::-webkit-scrollbar-track { background: #eee; border-radius: 4px; }
-.category-scroll::-webkit-scrollbar-thumb { background: #2e7d32; border-radius: 4px; }
+.req-pills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; }
+.pill-call   { background: var(--green-light); color: var(--green-dark); font-weight: 600; }
+.pill-patron { background: var(--blue-light); color: var(--blue); font-weight: 600; }
+.pill-card   { background: var(--purple-light); color: var(--purple); font-family: 'DM Mono', monospace; font-size: 12px; }
+.pill-name   { background: var(--gold-light); color: var(--gold); }
 
-/* Movie card - FIXED: Take full width in grid */
-.movie-card {
-  width: 100%;
-  background: white;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.movie-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); transform: translateY(-2px); }
-.movie-card:active { transform: scale(0.98); }
-.movie-poster {
-  width: 100%;
-  aspect-ratio: 2/3;
-  object-fit: cover;
-  background: #e0e0e0;
-}
-.movie-info { padding: 10px; }
-.movie-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-bottom: 5px;
-}
-.movie-rating {
-  display: inline-block;
-  background: #e8f5e9;
-  color: #1b5e20;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-}
+.req-time { font-size: 12px; color: var(--muted); display: flex; gap: 12px; align-items: center; }
+.req-time .ago { font-weight: 700; color: #555; }
 
-/* Grid view (All Movies) - FIXED: Show 4 columns, scroll horizontally */
-.movie-grid-container {
-  overflow-x: auto;
-  padding: 0 20px 20px;
-}
-.movie-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 15px;
-  min-width: min-content;
-}
+.req-notes-row { display: flex; flex-direction: column; gap: 5px; }
+.req-note-display { font-size: 13px; color: #555; background: var(--gold-light); border-left: 3px solid var(--gold); padding: 6px 10px; border-radius: 0 6px 6px 0; font-style: italic; display: none; }
+.req-note-display.has-note { display: block; }
+.req-note-input { font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; width: 100%; resize: none; display: none; background: #fafafa; }
+.req-note-input.open { display: block; }
+.req-note-actions { display: none; gap: 6px; }
+.req-note-actions.open { display: flex; }
 
-/* Search Results - FIXED: Horizontal scroll with 4 visible */
-.search-results-container {
-  padding: 0 20px;
-}
-.search-results-scroll {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: calc(25% - 12px);
-  gap: 15px;
-  overflow-x: auto;
-  padding-bottom: 10px;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-}
-.search-results-scroll::-webkit-scrollbar { height: 8px; }
-.search-results-scroll::-webkit-scrollbar-track { background: #eee; border-radius: 4px; }
-.search-results-scroll::-webkit-scrollbar-thumb { background: #2e7d32; border-radius: 4px; }
+.req-actions { flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 14px 14px; border-left: 1px solid #f0f0f0; min-width: 118px; }
+.req-done-label { font-size: 13px; color: #4caf50; font-weight: 700; text-align: center; }
 
-/* Loading / Empty */
-.loading, .empty {
-  text-align: center;
-  padding: 50px;
-  color: #666;
-}
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #e0e0e0;
-  border-top-color: #2e7d32;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 15px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+/* TABLES */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+.table th { font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; background: #fafafa; }
+.table tbody tr:hover { background: var(--green-pale); }
+.table img { width: 38px; height: 56px; object-fit: cover; border-radius: 4px; }
 
-/* Modal */
-.modal-bg {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.2s;
-}
-.modal-bg.visible { opacity: 1; visibility: visible; }
-.modal {
-  background: white;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-.modal-head {
-  display: flex;
-  gap: 20px;
-  padding: 20px;
-  background: #f5f5f5;
-  border-bottom: 1px solid #eee;
-}
-.modal-poster {
-  width: 130px;
-  aspect-ratio: 2/3;
-  object-fit: cover;
-  border-radius: 6px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.2);
-}
-.modal-details { flex: 1; }
-.modal-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: #1b5e20;
-  margin-bottom: 10px;
-  line-height: 1.2;
-}
-.badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 700;
-  margin-right: 6px;
-  margin-bottom: 6px;
-}
-.badge-rating { background: #e8f5e9; color: #1b5e20; }
-.badge-status { background: #e3f2fd; color: #1565c0; }
-.badge-status.in { background: #e8f5e9; color: #2e7d32; }
-.badge-status.out { background: #fff3e0; color: #e65100; }
-.detail-row { font-size: 14px; margin-top: 8px; color: #555; }
-.detail-label { color: #888; }
-.modal-body { padding: 20px; }
-.modal-actions { display: flex; flex-direction: column; gap: 10px; }
-.btn-lg {
-  padding: 16px;
-  font-size: 16px;
-  border-radius: 8px;
-  font-weight: 700;
-  width: 100%;
-}
-.btn-primary { background: #2e7d32; color: white; }
-.btn-primary:hover { background: #1b5e20; }
-.btn-blue { background: #1565c0; color: white; }
-.btn-blue:hover { background: #0d47a1; }
-.btn-gray { background: #f5f5f5; color: #333; border: 1px solid #ddd; }
-.btn-gray:hover { background: #eee; }
+/* PICKERS */
+.picker { border: 1px solid var(--border); border-radius: 8px; max-height: 340px; overflow-y: auto; }
+.picker-search { padding: 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: white; }
+.picker-search input { width: 100%; padding: 8px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; }
+.picker-list { padding: 5px; }
+.picker-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.picker-item:hover { background: var(--green-pale); }
+.picker-item img { width: 34px; height: 50px; object-fit: cover; border-radius: 3px; background: #eee; }
+.picker-item .p-title { font-size: 13px; font-weight: 600; }
+.picker-item .p-bc { font-size: 11px; color: var(--muted); }
+.selected-list { display: flex; flex-wrap: wrap; gap: 8px; min-height: 36px; }
+.selected-tag { display: flex; align-items: center; gap: 6px; background: var(--green-light); padding: 4px 9px 4px 4px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+.selected-tag img { width: 24px; height: 36px; object-fit: cover; border-radius: 2px; }
+.selected-tag .rm { cursor: pointer; color: #999; font-size: 15px; line-height: 1; }
+.selected-tag .rm:hover { color: var(--red); }
 
-/* Login Modal */
-.login-box { padding: 30px; text-align: center; }
-.login-title { font-size: 24px; font-weight: 700; color: #1b5e20; margin-bottom: 5px; }
-.login-sub { color: #666; margin-bottom: 20px; }
-.login-input {
-  width: 100%;
-  padding: 14px;
-  font-size: 20px;
-  text-align: center;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  margin-bottom: 15px;
-  letter-spacing: 2px;
-}
-.login-input:focus { border-color: #2e7d32; outline: none; }
-.login-error { color: #d32f2f; font-size: 14px; margin-bottom: 10px; display: none; }
-.login-error.visible { display: block; }
-.numpad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 15px;
-}
-.num-btn {
-  padding: 18px;
-  font-size: 24px;
-  font-weight: 700;
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.num-btn:hover { background: #e8f5e9; }
-.num-btn:active { background: #c8e6c9; }
-.num-btn.go { background: #2e7d32; color: white; border-color: #2e7d32; }
-.num-btn.go:hover { background: #1b5e20; }
+/* FORMS */
+.form-group { margin-bottom: 15px; }
+.form-label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 13px; }
+.form-input, .form-select, .form-textarea { width: 100%; padding: 9px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; transition: border-color 0.15s; }
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--green-mid); outline: none; }
+.form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid #f5f5f5; }
+.toggle-row:last-child { border-bottom: none; }
+.toggle-label { font-size: 13px; font-weight: 500; }
+.toggle-desc  { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.toggle { position: relative; width: 42px; height: 24px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; cursor: pointer; inset: 0; background: #ccc; border-radius: 24px; transition: 0.2s; }
+.toggle-slider:before { content:""; position:absolute; width:18px; height:18px; left:3px; bottom:3px; background:white; border-radius:50%; transition:0.2s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.toggle input:checked + .toggle-slider { background: #4caf50; }
+.toggle input:checked + .toggle-slider:before { transform: translateX(18px); }
 
-/* Confirmation */
-.confirm-box { padding: 40px 30px; text-align: center; }
-.confirm-icon { font-size: 60px; margin-bottom: 15px; }
-.confirm-title { font-size: 24px; font-weight: 700; color: #2e7d32; margin-bottom: 10px; }
-.confirm-msg { font-size: 16px; color: #555; margin-bottom: 25px; line-height: 1.5; }
+/* IMAGE UPLOAD */
+.img-upload { border: 2px dashed var(--border); border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s; }
+.img-upload:hover { border-color: var(--green-mid); background: var(--green-pale); }
+.img-upload img { max-width: 110px; max-height: 165px; border-radius: 4px; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
+.img-upload input { display: none; }
 
-/* Timeout bar */
-.timeout-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: #ff9800;
-  color: white;
-  padding: 16px 25px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 16px;
-  font-weight: 600;
-  z-index: 2000;
-  transform: translateY(100%);
-  transition: transform 0.3s;
-}
-.timeout-bar.visible { transform: translateY(0); }
-.timeout-bar button {
-  padding: 10px 24px;
-  background: white;
-  color: #e65100;
-  border: none;
-  border-radius: 6px;
-  font-weight: 700;
-  cursor: pointer;
-}
+/* MODAL */
+.modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; opacity:0; visibility:hidden; transition:all .2s; }
+.modal-bg.visible { opacity:1; visibility:visible; }
+.modal { background:white; border-radius:12px; width:100%; max-width:540px; max-height:90vh; overflow-y:auto; }
+.modal-head { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+.modal-head h3 { font-size:16px; font-weight:700; }
+.modal-head .close { background:none; border:none; font-size:22px; cursor:pointer; color:var(--muted); line-height:1; }
+.modal-body { padding:20px; }
+.modal-foot { padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px; }
 
-/* Toast */
-.toast {
-  position: fixed;
-  bottom: 25px;
-  left: 50%;
-  transform: translateX(-50%) translateY(100px);
-  background: #333;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 500;
-  z-index: 3000;
-  opacity: 0;
-  transition: all 0.3s;
-}
-.toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-.toast.success { background: #2e7d32; }
-.toast.error { background: #d32f2f; }
+/* TOAST */
+.toast { position:fixed; bottom:22px; right:22px; background:#222; color:white; padding:12px 20px; border-radius:8px; font-size:13px; font-weight:600; z-index:2000; transform:translateY(80px); opacity:0; transition:all .3s; box-shadow:var(--shadow-lg); }
+.toast.visible { transform:translateY(0); opacity:1; }
+.toast.success { background: var(--green-dark); }
+.toast.error   { background: var(--red); }
 
-/* Patron Status Bar */
-.patron-status-bar {
-  background: linear-gradient(to bottom, #f9f9f9, #f0f0f0);
-  border-bottom: 3px solid #2e7d32;
-  padding: 14px 24px;
-  display: none;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 17px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-.patron-status-bar.visible { display: flex; }
-.patron-info { 
-  display: flex; 
-  gap: 35px; 
-  align-items: center; 
-}
-.patron-info-item { 
-  display: flex; 
-  align-items: center; 
-  gap: 10px;
-  font-weight: 600;
-}
-.patron-info-item.warning { 
-  color: #d32f2f; 
-  font-weight: 700;
-  animation: pulse 2s infinite;
-}
-.patron-info-item.good { color: #2e7d32; }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-.checkout-counter {
-  font-size: 20px;
-  font-weight: 700;
-  padding: 10px 20px;
-  background: white;
-  border-radius: 8px;
-  border: 3px solid #2e7d32;
-  color: #2e7d32;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-}
-.checkout-counter.warning {
-  border-color: #ff9800;
-  color: #ff9800;
-}
-.checkout-counter.blocked {
-  border-color: #d32f2f;
-  color: #d32f2f;
-  background: #ffebee;
-}
+/* EMPTY */
+.empty { text-align:center; padding:52px 20px; color:var(--muted); }
+.empty-icon { font-size:48px; margin-bottom:12px; opacity:.5; }
+.empty-title { font-size:16px; font-weight:600; color:var(--text); margin-bottom:6px; }
 
-/* Loading spinner */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-.status-spinner {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-  margin-right: 6px;
-}
-
-/* Full-screen loading overlay */
-.loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  flex-direction: column;
-  gap: 20px;
-}
-.loading-overlay.visible {
-  display: flex;
-}
-.loading-spinner {
-  width: 80px;
-  height: 80px;
-  border: 8px solid #f3f3f3;
-  border-top: 8px solid #2e7d32;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-.loading-text {
-  color: white;
-  font-size: 24px;
-  font-weight: 600;
-  text-align: center;
-  max-width: 80%;
-}
-.loading-subtext {
-  color: #ccc;
-  font-size: 18px;
-  text-align: center;
-}
-
-/* Button loading states */
-.btn.loading {
-  position: relative;
-  color: transparent;
-  pointer-events: none;
-}
-.btn.loading::after {
-  content: '';
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  top: 50%;
-  left: 50%;
-  margin-left: -10px;
-  margin-top: -10px;
-  border: 3px solid #ffffff;
-  border-radius: 50%;
-  border-top-color: transparent;
-  animation: spin 0.6s linear infinite;
-}
-
-/* Holds display */
-.hold-card {
-  background: white;
-  border-radius: 8px;
-  padding: 15px;
-  margin-bottom: 12px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-  display: flex;
-  gap: 15px;
-  align-items: start;
-}
-.hold-poster {
-  width: 80px;
-  aspect-ratio: 2/3;
-  object-fit: cover;
-  border-radius: 6px;
-  background: #e0e0e0;
-  flex-shrink: 0;
-}
-.hold-details { flex: 1; }
-.hold-title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: #1b5e20;
-}
-.hold-meta {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 4px;
-}
-.hold-status {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 700;
-  margin-top: 8px;
-}
-.hold-status.ready {
-  background: #4caf50;
-  color: white;
-}
-.hold-status.pending {
-  background: #ff9800;
-  color: white;
-}
-.hold-status.shipped {
-  background: #2196f3;
-  color: white;
-}
-.hold-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-.hold-actions .btn {
-  padding: 8px 16px;
-  font-size: 13px;
-}
-.holds-section-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1b5e20;
-  margin-bottom: 15px;
-  padding-left: 5px;
-}
-
+/* Progress bar */
+.progress-wrap { height:8px; background:#eee; border-radius:4px; overflow:hidden; }
+.progress-bar  { height:100%; background:#4caf50; width:0%; transition:width .4s; }
 </style>
 </head>
 <body>
 
-<header class="header">
-  <div>
-    <div class="logo"><?php echo htmlspecialchars($libraryName); ?></div>
-    <div class="logo-sub">DVD & Movie Collection</div>
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h1>📚 Paxton Carnegie</h1>
+    <p>Staff Dashboard</p>
   </div>
-  <div class="user-area">
-    <div class="user-info" id="userInfo">
-      <div class="user-name" id="userName">Welcome!</div>
-      <div class="user-card" id="userCard"></div>
-    </div>
-    <button class="btn btn-white" id="btnLogin">Sign In</button>
-    <button class="btn btn-outline" id="btnLogout" style="display:none;">Sign Out</button>
-  </div>
-</header>
-
-<nav class="nav">
-  <button class="nav-btn active" data-tab="browse">Browse</button>
-  <button class="nav-btn" data-tab="all">All Movies</button>
-  <button class="nav-btn" data-tab="search">Search</button>
-  <button class="nav-btn" data-tab="holds" id="btnHoldsTab" style="display: none;">My Holds</button>
+  <div class="nav-section">Requests</div>
+  <button class="nav-item active" data-page="requests">
+    <span class="nav-icon">📋</span> Movie Requests
+    <span class="nav-badge" id="reqBadge" style="display:none">0</span>
+  </button>
+  <div class="nav-section">Content</div>
+  <button class="nav-item" data-page="featured"><span class="nav-icon">⭐</span> Staff Picks</button>
+  <button class="nav-item" data-page="arrivals"><span class="nav-icon">🆕</span> New Arrivals</button>
+  <button class="nav-item" data-page="movies"><span class="nav-icon">🎬</span> All Movies</button>
+  <div class="nav-section">System</div>
+  <button class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span> Settings</button>
+  <button class="nav-item" data-page="cache"><span class="nav-icon">🔄</span> Cache / Sync</button>
 </nav>
 
-<!-- Patron Status Bar -->
-<div class="patron-status-bar" id="patronStatusBar">
-  <div class="patron-info">
-    <div class="patron-info-item" id="patronNameDisplay">
-      <span>👤</span>
-      <span id="patronName">Guest</span>
+<div class="main">
+  <header class="topbar">
+    <h2 id="pageTitle">Movie Requests</h2>
+    <div class="topbar-right">
+      <button class="btn btn-secondary" id="btnRefresh">🔄 Refresh</button>
     </div>
-    <div class="patron-info-item" id="patronFinesDisplay">
-      <span>💰</span>
-      <span>Fines: <strong id="patronFines">$0.00</strong></span>
-    </div>
-  </div>
-  <div class="checkout-counter" id="checkoutCounter">
-    DVDs Checked Out: <span id="dvdCount">0</span>/5
-  </div>
-</div>
+  </header>
 
-<!-- Filter Bar -->
-<div class="filter-bar">
-  <button class="filter-btn active" id="filterAll" onclick="setFilter('all')">
-    <span>📚 All Movies</span>
-    <span class="count" id="countAll">0</span>
-  </button>
-  <button class="filter-btn" id="filterAvailable" onclick="setFilter('available')">
-    <span>✅ Available Now</span>
-    <span class="count" id="countAvailable">0</span>
-  </button>
-</div>
+  <div class="content">
 
-<div class="search-bar" id="searchBar">
-  <input type="text" class="search-input" id="searchInput" placeholder="Type a movie title...">
-</div>
-
-<!-- On-screen keyboard -->
-<div id="oskContainer">
-  <div class="osk-row">
-    <?php foreach(['Q','W','E','R','T','Y','U','I','O','P'] as $k): ?>
-    <button class="osk-key" data-key="<?= $k ?>"><?= $k ?></button>
-    <?php endforeach; ?>
-  </div>
-  <div class="osk-row">
-    <?php foreach(['A','S','D','F','G','H','J','K','L'] as $k): ?>
-    <button class="osk-key" data-key="<?= $k ?>"><?= $k ?></button>
-    <?php endforeach; ?>
-  </div>
-  <div class="osk-row">
-    <?php foreach(['Z','X','C','V','B','N','M'] as $k): ?>
-    <button class="osk-key" data-key="<?= $k ?>"><?= $k ?></button>
-    <?php endforeach; ?>
-    <button class="osk-key backspace" data-key="BACKSPACE">⌫</button>
-  </div>
-  <div class="osk-row">
-    <button class="osk-key clear-btn" data-key="CLEAR">Clear</button>
-    <button class="osk-key space" data-key="SPACE">SPACE</button>
-    <button class="osk-key wide" data-key="APOSTROPHE">'</button>
-    <button class="osk-key wide" data-key="COLON">:</button>
-    <button class="osk-key wide osk-done-btn" data-key="DONE" id="oskDoneBtn" style="display:none;background:#2e7d32;color:#fff;border-color:#1b5e20;min-width:110px;">✓ Done</button>
-  </div>
-</div>
-
-<main class="main">
-  <!-- Browse tab: horizontal scroll rows -->
-  <section class="section active" id="tabBrowse">
-    <div class="category">
-      <div class="category-title">⭐ Staff Picks</div>
-      <div class="category-scroll" id="rowFeatured">
-        <div class="loading"><div class="spinner"></div>Loading...</div>
+    <!-- REQUESTS -->
+    <div class="page active" id="pageRequests">
+      <div class="stats">
+        <div class="stat"><div class="stat-val" id="statPending">0</div><div class="stat-lbl">Pending Get Now</div></div>
+        <div class="stat"><div class="stat-val" id="statHolds">0</div><div class="stat-lbl">Pending Holds</div></div>
+        <div class="stat"><div class="stat-val" id="statToday">0</div><div class="stat-lbl">Today</div></div>
+        <div class="stat"><div class="stat-val" id="statTotal">0</div><div class="stat-lbl">All Time</div></div>
       </div>
-    </div>
-    <div class="category">
-      <div class="category-title">🆕 New Arrivals</div>
-      <div class="category-scroll" id="rowNew">
-        <div class="loading"><div class="spinner"></div>Loading...</div>
-      </div>
-    </div>
-    <div class="category">
-      <div class="category-title">🎬 Recently Added</div>
-      <div class="category-scroll" id="rowRecent">
-        <div class="loading"><div class="spinner"></div>Loading...</div>
-      </div>
-    </div>
-  </section>
-  
-  <!-- All Movies tab: grid -->
-  <section class="section" id="tabAll">
-    <div class="movie-grid-container">
-      <div class="movie-grid" id="gridAll">
-        <div class="loading"><div class="spinner"></div>Loading...</div>
-      </div>
-    </div>
-  </section>
-  
-  <!-- Search tab: horizontal scroll -->
-  <section class="section" id="tabSearch">
-    <div class="search-results-container">
-      <div class="search-results-scroll" id="searchResults"></div>
-    </div>
-    <div class="empty" id="searchEmpty">
-      <div style="font-size:40px;margin-bottom:10px;">🔍</div>
-      <div style="font-weight:600;">Search for a movie</div>
-      <div>Enter a title above</div>
-    </div>
-  </section>
-  
-  <!-- My Holds tab -->
-  <section class="section" id="tabHolds">
-    <div id="holdsLoading" class="loading">
-      <div class="spinner"></div>
-      <div>Loading your holds...</div>
-    </div>
-    <div id="holdsContent" style="display:none; padding: 20px;">
-      <div id="holdsReady" style="margin-bottom: 30px;"></div>
-      <div id="holdsWaiting" style="margin-bottom: 30px;"></div>
-      <div id="holdsOther"></div>
-    </div>
-    <div class="empty" id="holdsEmpty" style="display:none;">
-      <div style="font-size:40px;margin-bottom:10px;">📚</div>
-      <div style="font-weight:600;">No Holds</div>
-      <div>You don't have any active holds</div>
-    </div>
-  </section>
-</main>
-
-<!-- Movie Detail Modal -->
-<div class="modal-bg" id="movieModal">
-  <div class="modal">
-    <div class="modal-head">
-      <img class="modal-poster" id="modalPoster" src="" alt="">
-      <div class="modal-details">
-        <div class="modal-title" id="modalTitle">Movie Title</div>
-        <div>
-          <span class="badge badge-rating" id="modalRating">PG</span>
-          <span class="badge badge-status" id="modalStatus">
-            <span class="status-spinner" style="display:none;">⏳</span>
-            <span class="status-text">Checking...</span>
-          </span>
+      <div class="card">
+        <div class="card-head">
+          <h3>Request Queue <span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:6px;">drag ⠿ to reorder</span></h3>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="chkShowDone"> Show completed
+            </label>
+            <button class="btn btn-sm btn-ghost" id="btnClearDone">🗑️ Clear completed</button>
+          </div>
         </div>
-        <div class="detail-row"><span class="detail-label">Call #:</span> <span id="modalCall">—</span></div>
-        <div class="detail-row"><span class="detail-label">Barcode:</span> <span id="modalBarcode">—</span></div>
-        <div class="detail-row"><span class="detail-label">Location:</span> <span id="modalLocation">DVD Section</span></div>
+        <div class="card-body">
+          <div class="req-list" id="reqList">
+            <div class="empty"><div class="empty-icon">📭</div><div class="empty-title">No requests yet</div></div>
+          </div>
+        </div>
       </div>
     </div>
+
+    <!-- STAFF PICKS -->
+    <div class="page" id="pageFeatured">
+      <div class="card">
+        <div class="card-head"><h3>⭐ Staff Picks</h3><button class="btn btn-primary" id="btnSaveFeatured">💾 Save</button></div>
+        <div class="card-body">
+          <p style="margin-bottom:12px;font-size:13px;color:var(--muted);">Select movies to feature on the kiosk "Staff Picks" row.</p>
+          <div class="selected-list" id="featuredTags"></div>
+          <div class="picker" style="margin-top:15px;">
+            <div class="picker-search"><input type="text" placeholder="Search movies…" id="featuredSearch"></div>
+            <div class="picker-list" id="featuredList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW ARRIVALS -->
+    <div class="page" id="pageArrivals">
+      <div class="card">
+        <div class="card-head"><h3>🆕 New Arrivals</h3><button class="btn btn-primary" id="btnSaveArrivals">💾 Save</button></div>
+        <div class="card-body">
+          <p style="margin-bottom:12px;font-size:13px;color:var(--muted);">Select movies for the "New Arrivals" row on the kiosk.</p>
+          <div class="selected-list" id="arrivalsTags"></div>
+          <div class="picker" style="margin-top:15px;">
+            <div class="picker-search"><input type="text" placeholder="Search movies…" id="arrivalsSearch"></div>
+            <div class="picker-list" id="arrivalsList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALL MOVIES -->
+    <div class="page" id="pageMovies">
+      <div class="card">
+        <div class="card-head">
+          <h3>🎬 Movie Inventory</h3>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <input type="text" placeholder="Search…" id="movieSearch" style="padding:7px 11px;border:1px solid var(--border);border-radius:6px;width:200px;font-family:inherit;font-size:13px;">
+            <span id="movieCount" style="font-size:12px;color:var(--muted);">0 movies</span>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;max-height:520px;overflow-y:auto;">
+          <table class="table">
+            <thead><tr><th>Cover</th><th>Shelf #</th><th>Title</th><th>Barcode</th><th>Rating</th><th>Call #</th><th>Status</th><th></th></tr></thead>
+            <tbody id="movieBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="pageSettings">
+      <div class="card">
+        <div class="card-head"><h3>⚙️ Kiosk Settings</h3><button class="btn btn-primary" id="btnSaveSettings">💾 Save Settings</button></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">Library Name</label>
+            <input type="text" class="form-input" id="setLibraryName" value="<?php echo htmlspecialchars($settings['libraryName'] ?? 'Paxton Carnegie Library'); ?>">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Inactivity Timeout (seconds)</label>
+            <input type="number" class="form-input" id="setTimeout" value="<?php echo $settings['timeout'] ?? 60; ?>" min="30" max="300" style="width:120px;">
+            <div class="form-hint">How long before showing "Are you still there?"</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Warning Duration (seconds)</label>
+            <input type="number" class="form-input" id="setWarning" value="<?php echo $settings['warning'] ?? 15; ?>" min="5" max="60" style="width:120px;">
+            <div class="form-hint">Countdown before auto-logout</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Display Options</label>
+            <div class="toggle-row">
+              <div><div class="toggle-label">Show Staff Picks</div><div class="toggle-desc">Display featured movies row</div></div>
+              <label class="toggle"><input type="checkbox" id="setShowFeatured" <?php echo ($settings['showFeatured'] ?? true) ? 'checked' : ''; ?>><span class="toggle-slider"></span></label>
+            </div>
+            <div class="toggle-row">
+              <div><div class="toggle-label">Show New Arrivals</div><div class="toggle-desc">Display new arrivals row</div></div>
+              <label class="toggle"><input type="checkbox" id="setShowArrivals" <?php echo ($settings['showArrivals'] ?? true) ? 'checked' : ''; ?>><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Polaris Sync</label>
+            <div class="toggle-row">
+              <div><div class="toggle-label">Auto-sync movies</div><div class="toggle-desc">Kiosk re-fetches the recordset when data is stale</div></div>
+              <label class="toggle"><input type="checkbox" id="setAutoSyncMovies" <?php echo ($settings['autoSyncMovies'] ?? true) ? 'checked' : ''; ?>><span class="toggle-slider"></span></label>
+            </div>
+            <div style="margin-top:10px;">
+              <label class="form-label">Sync interval (minutes)</label>
+              <input type="number" class="form-input" id="setSyncInterval" value="<?php echo $settings['syncIntervalMinutes'] ?? 15; ?>" min="5" max="1440" style="width:120px;">
+              <div class="form-hint">How often the kiosk refreshes the movie list from Polaris</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Staff Dashboard</label>
+            <div class="toggle-row">
+              <div><div class="toggle-label">Sound Notifications</div><div class="toggle-desc">Play sound for new requests</div></div>
+              <label class="toggle"><input type="checkbox" id="setSound" <?php echo ($settings['sound'] ?? true) ? 'checked' : ''; ?>><span class="toggle-slider"></span></label>
+            </div>
+            <div class="toggle-row">
+              <div><div class="toggle-label">Auto-refresh</div><div class="toggle-desc">Check for new requests every 10s</div></div>
+              <label class="toggle"><input type="checkbox" id="setAutoRefresh" <?php echo ($settings['autoRefresh'] ?? true) ? 'checked' : ''; ?>><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CACHE / SYNC -->
+    <div class="page" id="pageCache">
+
+      <!-- Sync from Polaris -->
+      <div class="card">
+        <div class="card-head">
+          <h3>↓ Sync from Polaris</h3>
+          <div id="syncStatusBadge" style="font-size:12px;color:var(--muted);"></div>
+        </div>
+        <div class="card-body">
+          <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">
+            Pulls the current DVD collection directly from the Polaris recordset and rebuilds the movie list.
+            In/Out status comes from the recordset. Covers are fetched separately from Polaris → Syndetics.
+            The kiosk auto-syncs every <?php echo (int)($settings['syncIntervalMinutes'] ?? 15); ?> minutes and builds missing covers in the background.
+          </p>
+          <button class="btn btn-primary" id="btnSyncPolaris" style="font-size:15px;padding:12px 22px;">
+            ↓ Sync Movies from Polaris
+          </button>
+          <button class="btn btn-secondary" id="btnSyncCovers" style="font-size:15px;padding:12px 22px;margin-left:10px;">
+            🖼️ Build Missing Covers
+          </button>
+          <div id="syncProgress" style="display:none;margin-top:16px;">
+            <div class="progress-wrap"><div class="progress-bar" id="syncProgressBar"></div></div>
+            <div id="syncStatus" style="font-size:13px;color:var(--muted);margin-top:7px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Availability cache (legacy) -->
+      <div class="card">
+        <div class="card-head"><h3>🔄 Legacy Availability Cache</h3></div>
+        <div class="card-body">
+          <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">
+            The kiosk now reads In/Out status from the Polaris recordset when you sync movies above.
+            Use this only to clear old availability data from the previous background checker.
+          </p>
+          <button class="btn btn-secondary" id="btnResetAvail">🗑️ Reset Legacy Availability Cache</button>
+          <div class="form-hint">Not required for normal operation after recordset sync.</div>
+          <hr style="margin:20px 0;border:none;border-top:1px solid var(--border);">
+          <div class="form-group">
+            <label class="form-label">Refresh Cover for Single Movie</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" class="form-input" id="refreshBarcode" placeholder="Enter barcode" style="width:220px;">
+              <button class="btn btn-secondary" id="btnRefreshSingle">Refresh</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overrides -->
+      <div class="card">
+        <div class="card-head"><h3>🗂️ Data Overrides</h3></div>
+        <div class="card-body">
+          <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">
+            Movie edits (titles, covers, ratings) are saved as overrides and take priority over synced data.
+          </p>
+          <button class="btn btn-danger" id="btnClearOverrides">🗑️ Clear All Overrides</button>
+          <div class="form-hint">Resets all custom titles, covers, etc. back to Polaris data.</div>
+        </div>
+      </div>
+
+    </div><!-- /pageCache -->
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- Edit Movie Modal -->
+<div class="modal-bg" id="editModal">
+  <div class="modal">
+    <div class="modal-head"><h3>Edit Movie</h3><button class="close" id="btnCloseEdit">&times;</button></div>
     <div class="modal-body">
-      <div class="modal-actions">
-        <button class="btn btn-lg btn-primary" id="btnRequestNow">📋 Get Now — Staff will pull it</button>
-        <button class="btn btn-lg btn-blue" id="btnPlaceHold">📌 Place a Hold — Pick up another day</button>
-        <button class="btn btn-lg btn-gray" id="btnCloseMovie">Close</button>
+      <input type="hidden" id="editBarcode">
+      <div class="form-group">
+        <label class="form-label">Cover Image</label>
+        <div class="img-upload" id="imgUpload">
+          <img id="editCoverPreview" src="/img/no-cover.svg" alt="Cover">
+          <div style="font-size:13px;color:var(--muted);">Click to upload new image</div>
+          <input type="file" id="editCoverFile" accept="image/*">
+        </div>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- Login Modal -->
-<div class="modal-bg" id="loginModal">
-  <div class="modal" style="max-width:400px;">
-    <div class="login-box">
-      <div class="login-title">Welcome!</div>
-      <div class="login-sub">Scan or enter your library card</div>
-      <input type="text" class="login-input" id="barcodeInput" placeholder="Library card #" autofocus autocomplete="off">
-      <div class="login-error" id="loginError">Card not found</div>
-      <div class="numpad">
-        <button class="num-btn" data-n="1">1</button>
-        <button class="num-btn" data-n="2">2</button>
-        <button class="num-btn" data-n="3">3</button>
-        <button class="num-btn" data-n="4">4</button>
-        <button class="num-btn" data-n="5">5</button>
-        <button class="num-btn" data-n="6">6</button>
-        <button class="num-btn" data-n="7">7</button>
-        <button class="num-btn" data-n="8">8</button>
-        <button class="num-btn" data-n="9">9</button>
-        <button class="num-btn" data-n="⌫">⌫</button>
-        <button class="num-btn" data-n="0">0</button>
-        <button class="num-btn go" data-n="GO">GO</button>
+      <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="editTitle"></div>
+      <div class="form-group">
+        <label class="form-label">Rating</label>
+        <select class="form-select" id="editRating">
+          <option value="">—</option><option value="G">G</option><option value="PG">PG</option>
+          <option value="PG-13">PG-13</option><option value="R">R</option>
+          <option value="NC-17">NC-17</option><option value="NR">NR</option>
+        </select>
       </div>
-      <button class="btn btn-lg btn-gray" id="btnCancelLogin">Cancel</button>
+      <div class="form-group"><label class="form-label">Call Number</label><input type="text" class="form-input" id="editCallNumber"></div>
+      <div class="form-group"><label class="form-label">Location</label><input type="text" class="form-input" id="editLocation" placeholder="DVD Section"></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="editDescription" rows="3"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="btnCancelEdit">Cancel</button>
+      <button class="btn btn-primary" id="btnSaveEdit">💾 Save Changes</button>
     </div>
   </div>
-</div>
-
-<!-- Get Now Modal (card OR name) -->
-<div class="modal-bg" id="getNowModal">
-  <div class="modal" style="max-width:400px;">
-    <div class="login-box">
-      <div class="login-title">Get Now</div>
-      <div class="login-sub" id="getNowSub">Enter your library card number or your name</div>
-      <input type="text" class="login-input" id="getNowInput" placeholder="Card number or name" autocomplete="off">
-      <div class="login-error" id="getNowError"></div>
-      <div class="numpad" id="getNowNumpad">
-        <button class="num-btn" data-gn="1">1</button>
-        <button class="num-btn" data-gn="2">2</button>
-        <button class="num-btn" data-gn="3">3</button>
-        <button class="num-btn" data-gn="4">4</button>
-        <button class="num-btn" data-gn="5">5</button>
-        <button class="num-btn" data-gn="6">6</button>
-        <button class="num-btn" data-gn="7">7</button>
-        <button class="num-btn" data-gn="8">8</button>
-        <button class="num-btn" data-gn="9">9</button>
-        <button class="num-btn" data-gn="⌫">⌫</button>
-        <button class="num-btn" data-gn="0">0</button>
-        <button class="num-btn go" data-gn="GO">GO</button>
-      </div>
-      <button class="btn btn-lg" id="btnGetNowKeyboard" style="background:#e8f5e9;color:#2e7d32;border:2px solid #c8e6c9;margin-bottom:8px;">⌨ Enter Name Instead</button>
-      <button class="btn btn-lg btn-gray" id="btnCancelGetNow">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Confirmation Modal -->
-<div class="modal-bg" id="confirmModal">
-  <div class="modal" style="max-width:450px;">
-    <div class="confirm-box">
-      <div class="confirm-icon" id="confirmIcon">✅</div>
-      <div class="confirm-title" id="confirmTitle">Request Sent!</div>
-      <div class="confirm-msg" id="confirmMsg">Staff will pull your movie. Please wait at the desk.</div>
-      <button class="btn btn-lg btn-primary" id="btnConfirmOK">OK</button>
-    </div>
-  </div>
-</div>
-
-<!-- Timeout bar -->
-<div class="timeout-bar" id="timeoutBar">
-  <span>⏱️ Still there? Session ends in <strong id="timeoutNum"><?php echo $warning; ?></strong>s</span>
-  <button id="btnStayHere">I'm Here!</button>
 </div>
 
 <div class="toast" id="toast"></div>
+<audio id="notifySound" preload="auto">
+  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2OnqeXjHlwaHB8i5aZlol5bGVufI2dn5eKd2pkcH2OoJ+Wi3VoYW1+kqKgloZwZGFsf5Wkn5KAa2JgbIGYpp2NdmVgaH2Uo52TgW1iYGqCmaaej3RiX2V6kaCdlIJuYV5ofJSinpKBbGFeaH2WpaCQfGphXWd7k6GdlYRvY11meZOgnJWFcWVdZXiRn5yWhXNmXmR2j52ak4VzaF5jdY2bmJKGdWpeYnOLmZeRh3ZsX2Fxipear4t1Yl1gcIibm5SJeW1hX26Gk5ORiHltYV9uhpOSkYh6bWFfbYWSkZGIe21hX22EkZCQiHxtYl9thJGQkIh8bWFfbISQj4+IfG1iYGyDj46OiH1tYmBrgo6Njoh9bWJga4KOjY6IfW1iYGuCjo2NiH1tYmBrgo6NjYl9bWJga4GOjI2JfW1iYWuBjYyMiX1tYmFrgI2MjIl+bWJha4CNjIyJfm1iYWqAjIuLin5tYmJqgIyLi4p+bWJiaoSQj4+LgG9kY2yGkpGRjIJwZWRtiJSTkoyDcWZlbo2ZmJWPhnRoZnCRnJuYkolyamd0laCdmpSMdWtpe5mjoJuWj3ltbH2cpaKdmJF7b26BoKeinpl+cXCEoqagm5l/c3GGo6ehn5qAc3KHpKiioJuBdHKIpKiioZyBdXOIpKiioZyBdXOIpKiioZyBdXOIpKiioZyCdXOIpKiioZyCdXSIpKiioZyCdXSIo6ehoJuBdHSHo6ehoJuBdHOHoqagoJuBc3OGoqagn5qAc3KGoaWfnpmAcnGFoaWfnpmAcXCFoKSenpiBcXCEn6SdnZiBcG+Dn6OdnZiBcG+CnqKcnJeBb2+CnqKcnJeBb2+CnaGbm5aBbm6BnaGbm5aBbm6BnKCam5aBbm2AnKCam5WBbW2Am5+ZmpWAbW1/m5+ZmpWAbWx/mp6YmZSAbGx+mp6YmZSAbGx+mZ2XmJOAbGt9mZ2XmJOAbGt9mJyWl5KAamp8mJyWl5KAamp8l5uVlpGAamp7l5uVlpF/aml7lpqUlZB/aWl6lpqUlZB/aWh5lZmTlI9/aGh5lZmTlI9/aGh4lJiSk45/Z2d3lJiSk45/Z2d3k5eRko5+Zmd2k5eRko5+ZmZ2kpaQkY1+ZmZ1kpaQkY1+ZWV0kZWPkIx9ZWV0kZWPkIx9ZGRzkJSOj4t9ZGRzkJSOj4t9Y2NykJONjop8Y2NxkJONjop8YmJwj5KMjYl8YmJwj5KMjYl8YWFvjpGLjIl7YWFvjpGLjIl7YWFujZCKi4h7YGBujZCKi4h7YGBtjY+JioZ6X19tjY+JioZ6X19sjI6IiYZ6X15sjI6IiYZ6X15ri42Hh4V5Xl1ri42Hh4V5XVxqi4yGhoR4XVxqioqFhYN4XFtpiomEhIN3W1tpiYiDg4J3W1poiIeCgoF2Wlpoh4aBgYB2WlpnhoWAgH91WVlnhoWAgH91WFhmhYR/f371WFhmhIN+fn10V1dlhIN+fn10V1dlg4J9fXxzVlZkg4J9fXxzVlVkgoF8fHtyVVVjgYB7e3pyVVRjgH97e3lyVFRif396enlyU1Nif395eXhxU1JhfX55eHdwUlJhfX14eHdwUVFge3x3d3ZvUFFge3x3d3ZvT1Bfen12dnVuT09fen12dnVuT05eeXt1dXRtTk5eeXt1dXRtTU1dd3pzdHNsTE1dd3pzdHNsTExcdnlycnJrS0xcdnlycnJrS0tbdXhxcXFqSkpbdXhxcXFqSUladHdwcHBpSUladHdwcG9pSEhZc3ZvbnBoSEhZc3ZvbnBoRkdYcnVubW9nRkdYcnVubW9nRUZXcXRtbG1mRUZXcXRtbG1mRERWcHNsbGxlRERWcHNsbGxlQ0NVb3JramtkQ0NVb3JramtkQkJUbnFqaWljQkJUbnFqaWljQUFTbXBpaGhiQUFTbXBpaGhiQEBSbG9oZ2dhQEBSbG9oZ2dhPz9Ra25nZmZgPz9Ra25nZmZgPj5QamxmZWVfPj5QamxmZWVfPT1PaWtlZGRePT1PaWtlZGRePTxOaGpkY2NdPDxOaGpkY2NdOzs=" type="audio/wav">
+</audio>
 
 <script>
 const NO_COVER = '/img/no-cover.svg';
-const TIMEOUT_IDLE = <?php echo $timeout * 1000; ?>;
-const TIMEOUT_WARN = <?php echo $warning * 1000; ?>;
-
-// Helper functions
 const $ = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
-const esc = str => {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-};
+const $$ = s => [...document.querySelectorAll(s)];
 
-// Loading overlay helpers
-function showLoading(text = 'Loading...', subtext = '') {
-  $('#loadingText').textContent = text;
-  $('#loadingSubtext').textContent = subtext;
-  $('#loadingOverlay').classList.add('visible');
-}
+let movies = [], movieMap = {}, requests = [];
+let featuredBarcodes = <?php echo json_encode($settings['featured'] ?? []); ?>;
+let arrivalsBarcodes  = <?php echo json_encode($settings['newArrivals'] ?? []); ?>;
+let autoRefreshTimer  = null;
+let lastPendingCount  = 0;
+let showDone          = false;
+let localNotes        = {};
 
-function hideLoading() {
-  $('#loadingOverlay').classList.remove('visible');
-}
-
-let movies = [];
-let movieMap = {};
-let currentFilter = 'all'; // 'all' or 'available'
-let movieSource = 'unknown';
-let lastSync = null;
-let currentUser = null;
-let patronStatus = null; // Stores fines, checkout counts, blocking info
-let currentMovie = null;
-let idleTimer = null;
-let warnInterval = null;
-let kioskSettings = {};
-
-// Initialize — Paxlib Kiosk v3 (recordset; no availability polling)
+// ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
-  console.log('%c Paxlib Kiosk v3 — recordset mode ', 'background:#2e7d32;color:#fff;font-weight:bold;padding:2px 8px;border-radius:4px');
-  await loadKioskSettings();
   await loadMovies();
-  renderAll();
+  await loadRequests();
+  renderPickers();
+  renderMovieTable();
   setupEvents();
-  maybeAutoSyncMovies();
-  startCoverSyncIfNeeded();
+  startAutoRefresh();
+  checkSyncStatus();
 }
 
-async function loadKioskSettings() {
-  try {
-    const res = await fetch('api/settings.php');
-    const data = await res.json();
-    if (data.ok) kioskSettings = data.settings || {};
-  } catch (e) {
-    console.warn('Could not load kiosk settings', e);
-  }
-}
-
-async function maybeAutoSyncMovies() {
-  if (kioskSettings.autoSyncMovies === false) return;
-
-  const intervalMin = parseInt(kioskSettings.syncIntervalMinutes, 10) || 15;
-  try {
-    const res = await fetch('api/sync-movies.php');
-    const data = await res.json();
-    if (!data.ok || data.running) return;
-
-    const lastSync = data.meta?.lastSync ? new Date(data.meta.lastSync).getTime() : 0;
-    const ageMs = lastSync ? (Date.now() - lastSync) : Infinity;
-
-    if (ageMs < intervalMin * 60 * 1000) {
-      console.log(`Recordset sync is fresh (${Math.round(ageMs / 60000)}m old)`);
-      return;
-    }
-
-    console.log('Auto-syncing movies from Polaris recordset…');
-    const syncRes = await fetch('api/sync-movies.php', { method: 'POST' });
-    const syncData = await syncRes.json();
-    if (syncData.ok) {
-      console.log(`Auto-sync complete: ${syncData.count} movies`);
-      await loadMovies();
-      renderAll();
-      startCoverSyncIfNeeded();
-    } else {
-      console.warn('Auto-sync failed:', syncData.error);
-    }
-  } catch (e) {
-    console.warn('Auto-sync skipped:', e);
-  }
-}
-
-async function startCoverSyncIfNeeded() {
-  const missing = movies.filter(m => !m.cover || m.cover.includes('no-cover')).length;
-  if (missing === 0) return;
-
-  console.log(`Fetching covers in background (${missing} missing)…`);
-
-  (async function runCoverSync() {
-    while (true) {
-      try {
-        const res = await fetch('api/sync-covers.php', { method: 'POST' });
-        const data = await res.json();
-        if (!data.ok) break;
-
-        if (data.updated > 0) {
-          console.log(`Covers: +${data.updated} (${data.remaining} remaining)`);
-          await loadMovies();
-          renderAll();
-        }
-
-        if (data.done || data.remaining === 0) {
-          console.log('Cover sync complete');
-          break;
-        }
-
-        await new Promise(r => setTimeout(r, 1500));
-      } catch (e) {
-        console.warn('Cover sync paused:', e);
-        break;
-      }
-    }
-  })();
-}
-
-// Load movies (list + availability from Polaris recordset sync)
+// ── DATA ──────────────────────────────────────────────────────────────────────
 async function loadMovies() {
   try {
-    const res = await fetch('api/movies.php');
-    const data = await res.json();
-    if (data.ok) {
-      movies = data.items || [];
+    const d = await fetch('../api/movies.php').then(r => r.json());
+    if (d.ok) {
+      movies = d.items || [];
       movieMap = Object.fromEntries(movies.map(m => [m.barcode, m]));
-      movieSource = data.source || 'unknown';
-      lastSync = data.lastSync || null;
-      const availableCount = movies.filter(m => m.available === true).length;
-      const withCovers = movies.filter(m => m.cover && !m.cover.includes('no-cover')).length;
-      console.log(`Loaded ${movies.length} movies from ${movieSource}` +
-        (lastSync ? ` (synced ${lastSync})` : '') +
-        ` — ${availableCount} available, ${withCovers} with covers`);
-      if (movieSource === 'csv') {
-        console.warn('Using CSV fallback — run "Sync Movies from Polaris" in the staff dashboard for live In/Out status.');
-      }
-      updateFilterCounts();
+      const src = d.source === 'recordset' ? 'Polaris recordset' : (d.source === 'csv' ? 'CSV fallback' : d.source);
+      const syncHint = d.lastSync ? ` · synced ${timeAgo(d.lastSync)}` : '';
+      $('#movieCount').textContent = `${movies.length} movies (${src}${syncHint})`;
     }
-  } catch (e) {
-    console.error('Failed to load movies:', e);
+  } catch(e) { console.error(e); }
+}
+
+async function loadRequests() {
+  try {
+    const d = await fetch('../api/requests.php').then(r => r.json());
+    if (!d.ok) return;
+    const newPending = (d.stats?.pendingNow || 0) + (d.stats?.pendingHolds || 0);
+    if (newPending > lastPendingCount && requests.length > 0 && $('#setSound')?.checked !== false) {
+      $('#notifySound').play().catch(()=>{});
+    }
+    lastPendingCount = newPending;
+    (d.requests || []).forEach(r => {
+      if (r.notes && localNotes[r.id] === undefined) localNotes[r.id] = r.notes;
+    });
+    requests = d.requests || [];
+    renderRequests();
+    updateStats(d.stats);
+  } catch(e) { console.error(e); }
+}
+
+// ── TIME ──────────────────────────────────────────────────────────────────────
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+function fmtTime(iso) { return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+
+// ── RENDER REQUESTS ───────────────────────────────────────────────────────────
+function renderRequests() {
+  const list    = $('#reqList');
+  const visible = showDone ? requests : requests.filter(r => !r.completed);
+
+  if (!visible.length) {
+    list.innerHTML = `<div class="empty">
+      <div class="empty-icon">${showDone ? '📭' : '✨'}</div>
+      <div class="empty-title">${showDone ? 'No requests' : 'All caught up!'}</div>
+    </div>`;
+    return;
   }
-}
 
-// Set filter
-function setFilter(filter) {
-  currentFilter = filter;
-  
-  // Update button states
-  $('#filterAll').classList.toggle('active', filter === 'all');
-  $('#filterAvailable').classList.toggle('active', filter === 'available');
-  
-  // Re-render all sections
-  renderAll();
-  
-  // If on search, re-run search
-  const searchInput = $('#searchInput');
-  if (searchInput.value.trim()) {
-    doSearch(searchInput.value);
-  }
-}
+  list.innerHTML = visible.map(r => {
+    const isNew    = !r.completed && (Date.now() - new Date(r.timestamp)) < 60000;
+    const isHold   = (r.type || 'now') === 'hold';
+    const call     = r.movie?.callNumber;
+    const shelfNum = getShelfNumber(r.movie);
+    const pBarcode = r.patron?.barcode;
+    const pName    = r.patron?.name || 'Guest';
+    const note     = localNotes[r.id] ?? r.notes ?? '';
 
-// Get filtered movies based on current filter
-function getFilteredMovies(movieList = movies) {
-  if (currentFilter === 'available') {
-    return movieList.filter(m => m.available === true);
-  }
-  return movieList;
-}
-
-// Update filter counts
-function updateFilterCounts() {
-  const availableCount = movies.filter(m => m.available === true).length;
-  $('#countAll').textContent = movies.length;
-  $('#countAvailable').textContent = availableCount;
-}
-
-// Render movie card
-function card(m) {
-  const coverSrc = m.cover || NO_COVER;
-  const unavailableClass = m.available === false ? ' unavailable' : '';
-  
-  return `
-    <div class="movie-card${unavailableClass}" data-barcode="${m.barcode}">
-      <img class="movie-poster" src="${coverSrc}" 
-           onerror="this.src='${NO_COVER}'" 
-           onload="if(this.naturalWidth <= 2 && this.naturalHeight <= 2) this.src='${NO_COVER}'"
-           loading="lazy">
-      <div class="movie-info">
-        <div class="movie-title">${esc(m.title)}</div>
-        ${m.rating ? `<span class="movie-rating">${esc(m.rating)}</span>` : ''}
+    return `
+<div class="req-card ${r.completed?'is-done':''} ${isHold?'is-hold':''} ${isNew?'new-flash':''}"
+     data-id="${r.id}" draggable="${!r.completed}">
+  <div class="req-drag" title="Drag to reorder">⠿</div>
+  <div class="req-poster-wrap">
+    <img class="req-poster" src="${esc(r.movie?.cover||NO_COVER)}" onerror="this.src='${NO_COVER}'" alt="">
+  </div>
+  <div class="req-body">
+    <div class="req-top">
+      <div class="req-title selectable">${esc(r.movie?.title||'Unknown')}</div>
+      ${shelfNum ? `<span class="badge badge-dvd">#${esc(shelfNum)}</span>` : ''}
+      <span class="badge ${isHold?'badge-hold':'badge-now'}">${isHold?'📌 Hold':'🎬 Get Now'}</span>
+      ${r.completed ? `<span class="badge badge-done">✅ Done</span>` : ''}
+    </div>
+    <div class="req-pills">
+      ${call ? `<span class="pill pill-call">📍 <span class="copy-text">${esc(call)}</span>${copyBtn(call, 'call number')}</span>` : ''}
+      <span class="pill pill-patron">👤 <span class="copy-text">${esc(pName)}</span>${copyBtn(pName, 'name')}</span>
+      ${pBarcode ? `<span class="pill pill-card">🪪 <span class="copy-text">${esc(pBarcode)}</span>${copyBtn(pBarcode, 'barcode')}</span>`
+                 : `<span class="pill pill-name">✍️ Name sign-in</span>`}
+      ${r.movie?.barcode ? `<span class="pill pill-card" style="background:#f5f5f5;color:#555;">🏷️ <span class="copy-text">${esc(r.movie.barcode)}</span>${copyBtn(r.movie.barcode, 'item barcode')}</span>` : ''}
+    </div>
+    <div class="req-time">
+      <span class="ago">${timeAgo(r.timestamp)}</span>
+      <span>at ${fmtTime(r.timestamp)}</span>
+      ${r.completed && r.completedAt ? `<span>· completed ${timeAgo(r.completedAt)}</span>` : ''}
+    </div>
+    <div class="req-notes-row">
+      <div class="req-note-display ${note?'has-note':''}" id="noteDisplay_${r.id}">${note ? '📝 '+esc(note) : ''}</div>
+      <textarea class="req-note-input" id="noteInput_${r.id}" rows="2"
+        placeholder="Add a staff note… (e.g. 'on hold shelf', 'patron called')">${esc(note)}</textarea>
+      <div class="req-note-actions" id="noteActions_${r.id}">
+        <button class="btn btn-xs btn-primary" onclick="saveNote('${r.id}')">💾 Save note</button>
+        <button class="btn btn-xs btn-ghost"   onclick="cancelNote('${r.id}')">Cancel</button>
       </div>
     </div>
-  `;
+  </div>
+  <div class="req-actions">
+    ${!r.completed
+      ? `<button class="btn btn-sm btn-primary" onclick="completeReq('${r.id}')">✅ Done</button>`
+      : `<div class="req-done-label">✅ Completed</div>`}
+    <button class="btn btn-sm btn-secondary" onclick="toggleNote('${r.id}')">📝 Note</button>
+    <button class="btn btn-sm btn-ghost"     onclick="deleteReq('${r.id}')">✕ Remove</button>
+  </div>
+</div>`;
+  }).join('');
+
+  attachDrag();
 }
 
-// Render all sections
-function renderAll() {
-  const filteredMovies = getFilteredMovies();
-  
-  fetch('api/settings.php')
-    .then(r => r.json())
-    .then(data => {
-      const s = data.settings || {};
-      
-      // Featured
-      const featuredBarcodes = s.featured || [];
-      const featured = getFilteredMovies(featuredBarcodes.map(bc => movieMap[bc]).filter(Boolean));
-      $('#rowFeatured').innerHTML = featured.length 
-        ? featured.map(card).join('') 
-        : filteredMovies.slice(0, 10).map(card).join('');
-      
-      // New arrivals
-      const newBarcodes = s.newArrivals || [];
-      const newArrivals = getFilteredMovies(newBarcodes.map(bc => movieMap[bc]).filter(Boolean));
-      $('#rowNew').innerHTML = newArrivals.length 
-        ? newArrivals.map(card).join('') 
-        : filteredMovies.slice(10, 20).map(card).join('');
-      
-      // Recent
-      $('#rowRecent').innerHTML = filteredMovies.slice(20, 35).map(card).join('');
-      
-      // All movies grid
-      $('#gridAll').innerHTML = filteredMovies.map(card).join('');
-      
-      attachClicks();
-    })
-    .catch(() => {
-      $('#rowFeatured').innerHTML = filteredMovies.slice(0, 10).map(card).join('');
-      $('#rowNew').innerHTML = filteredMovies.slice(10, 20).map(card).join('');
-      $('#rowRecent').innerHTML = filteredMovies.slice(20, 35).map(card).join('');
-      $('#gridAll').innerHTML = filteredMovies.map(card).join('');
-      
-      attachClicks();
+// ── NOTES ─────────────────────────────────────────────────────────────────────
+function toggleNote(id) {
+  const input   = $(`#noteInput_${id}`);
+  const actions = $(`#noteActions_${id}`);
+  const display = $(`#noteDisplay_${id}`);
+  const open    = input.classList.toggle('open');
+  actions.classList.toggle('open', open);
+  if (open) { display.style.display = 'none'; input.focus(); }
+  else { display.style.display = display.classList.contains('has-note') ? 'block' : 'none'; }
+}
+
+async function saveNote(id) {
+  const input = $(`#noteInput_${id}`);
+  const note  = (input?.value || '').trim();
+  localNotes[id] = note;
+  try {
+    await fetch('../api/requests.php', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ id, notes: note })
     });
-}
-
-const defaultSearchEmptyHTML = `
-  <div style="font-size:40px;margin-bottom:10px;">🔍</div>
-  <div style="font-weight:600;">Search for a movie</div>
-  <div>Enter a title above</div>
-`;
-
-function doSearch(q) {
-  q = (q || '').toLowerCase().trim();
-
-  const searchResults = $('#searchResults');
-  const searchEmpty = $('#searchEmpty');
-
-  if (!q) {
-    searchResults.innerHTML = '';
-    searchEmpty.style.display = 'block';
-    searchEmpty.innerHTML = defaultSearchEmptyHTML;
-    return;
+  } catch(e) {}
+  const display = $(`#noteDisplay_${id}`);
+  if (display) {
+    display.innerHTML = note ? `📝 ${esc(note)}` : '';
+    display.classList.toggle('has-note', !!note);
+    display.style.display = note ? 'block' : 'none';
   }
-
-  // First filter by search query
-  const searchMatches = movies.filter(m =>
-    (m.title || '').toLowerCase().includes(q) ||
-    String(m.barcode || '').toLowerCase().includes(q)
-  );
-  
-  // Then apply availability filter
-  const results = getFilteredMovies(searchMatches);
-
-  console.log(`Search for "${q}": found ${results.length} results`);
-
-  if (results.length === 0) {
-    searchResults.innerHTML = '';
-    searchEmpty.style.display = 'block';
-    searchEmpty.innerHTML = `
-      <div style="font-size:40px;margin-bottom:10px;">😕</div>
-      <div style="font-weight:600;">No movies found for "${esc(q)}"</div>
-      <div>Try searching for something else</div>
-    `;
-  } else {
-    searchEmpty.style.display = 'none';
-    searchResults.innerHTML = results.map(card).join('');
-    attachClicks();
-  }
+  input?.classList.remove('open');
+  $(`#noteActions_${id}`)?.classList.remove('open');
+  toast('Note saved', 'success');
 }
 
-// Attach click handlers
-function attachClicks() {
-  $$('.movie-card').forEach(c => {
-    c.onclick = () => openMovie(c.dataset.barcode);
-  });
+function cancelNote(id) {
+  const input   = $(`#noteInput_${id}`);
+  const actions = $(`#noteActions_${id}`);
+  const display = $(`#noteDisplay_${id}`);
+  if (input)   { input.value = localNotes[id] || ''; input.classList.remove('open'); }
+  if (actions) actions.classList.remove('open');
+  if (display) display.style.display = display.classList.contains('has-note') ? 'block' : 'none';
 }
 
-// Open movie modal
-async function openMovie(barcode) {
-  currentMovie = movieMap[barcode] || { barcode };
+// ── DRAG TO REORDER ───────────────────────────────────────────────────────────
+let dragSrcId = null;
 
-  $('#modalTitle').textContent = currentMovie.title || 'Unknown';
-  const modalPoster = $('#modalPoster');
-  modalPoster.src = currentMovie.cover || NO_COVER;
-  modalPoster.onload = function() {
-    if (this.naturalWidth <= 2 && this.naturalHeight <= 2) {
-      this.src = NO_COVER;
-    }
-  };
-
-  $('#modalRating').textContent = currentMovie.rating || 'NR';
-  $('#modalBarcode').textContent = barcode;
-  $('#modalCall').textContent = currentMovie.callNumber || '—';
-  $('#modalLocation').textContent = currentMovie.location || 'DVD Section';
-
-  const spinner = $('#modalStatus .status-spinner');
-  const statusText = $('#modalStatus .status-text');
-  spinner.style.display = 'none';
-
-  const status = currentMovie.status || (currentMovie.available ? 'In' : 'Out');
-  const isAvailable = currentMovie.available === true;
-
-  statusText.textContent = status;
-  $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
-
-  updateModalActionButtons(isAvailable);
-
-  $('#movieModal').classList.add('visible');
-}
-
-function updateModalActionButtons(isAvailable) {
-  $('#btnRequestNow').style.display = isAvailable ? 'block' : 'none';
-  $('#btnPlaceHold').style.display = 'block';
-}
-
-function closeMovie() {
-  $('#movieModal').classList.remove('visible');
-}
-
-// Login
-function showLogin(forHold = false) {
-  $('#barcodeInput').value = '';
-  $('#loginError').classList.remove('visible');
-  const sub = document.querySelector('#loginModal .login-sub');
-  if (sub) {
-    sub.textContent = forHold
-      ? 'Enter your library card to place a hold'
-      : 'Scan or enter your library card';
-  }
-  $('#loginModal').classList.add('visible');
-  setTimeout(() => $('#barcodeInput').focus(), 100);
-}
-
-function showHoldLogin() {
-  showLogin(true);
-}
-
-function closeLogin() {
-  $('#loginModal').classList.remove('visible');
-}
-
-async function doLogin() {
-  const barcode = $('#barcodeInput').value.trim();
-
-  if (!barcode) {
-    $('#loginError').textContent = 'Please enter your card number';
-    $('#loginError').classList.add('visible');
-    return;
-  }
-
-  // optional: basic barcode format check (prevents junk like "hello")
-  if (!/^\d{5,20}$/.test(barcode)) {
-    $('#loginError').textContent = 'Invalid barcode format';
-    $('#loginError').classList.add('visible');
-    return;
-  }
-
-  showLoading('Logging in...', 'Please wait');
-
-  try {
-    // First get basic patron info
-    const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`);
-    const data = await res.json();
-
-    if (!data.ok || !data.patron) {
-      hideLoading();
-      $('#loginError').textContent = 'Card not found';
-      $('#loginError').classList.add('visible');
-      toast('Invalid library card', 'error');
-      return;
-    }
-
-    currentUser = data.patron;
-
-    // Now check patron status (fines, checkouts)
-    const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(barcode)}`);
-    const statusData = await statusRes.json();
-    
-    hideLoading();
-    
-    if (statusData.ok) {
-      patronStatus = statusData;
-      
-      // Update patron status bar
-      $('#patronName').textContent = statusData.patronName;
-      $('#patronFines').textContent = '$' + statusData.fines.total.toFixed(2);
-      $('#dvdCount').textContent = statusData.checkouts.dvds;
-      
-      // Apply warning styling
-      const finesDisplay = $('#patronFinesDisplay');
-      finesDisplay.classList.remove('warning', 'good');
-      if (statusData.fines.total > 5) {
-        finesDisplay.classList.add('warning');
-      } else if (statusData.fines.total > 0) {
-        finesDisplay.classList.add('warning');
-      } else {
-        finesDisplay.classList.add('good');
-      }
-      
-      const counter = $('#checkoutCounter');
-      counter.classList.remove('warning', 'blocked');
-      if (statusData.checkouts.dvds >= 5) {
-        counter.classList.add('blocked');
-      } else if (statusData.checkouts.dvds >= 4) {
-        counter.classList.add('warning');
-      }
-      
-      // Show patron status bar
-      $('#patronStatusBar').classList.add('visible');
-      
-      // Show blocking message if needed
-      if (!statusData.canCheckout && statusData.blockReasons.length > 0) {
-        toast('⚠️ ' + statusData.blockReasons.join('. '), 'error');
-      }
-    }
-
-    $('#userName').textContent = `Hello, ${currentUser.name}!`;
-    $('#userCard').textContent = `Card: ${currentUser.barcode}`;
-    $('#userInfo').classList.add('visible');
-    $('#btnLogin').style.display = 'none';
-    $('#btnLogout').style.display = 'block';
-    $('#btnHoldsTab').style.display = 'block'; // Show holds tab
-
-    closeLogin();
-    toast(`Welcome, ${currentUser.name}!`, 'success');
-    resetIdleTimer();
-
-    if (_pendingHoldAfterLogin) {
-      _pendingHoldAfterLogin = false;
-      await requestMovie('hold');
-      return;
-    }
-
-  } catch (e) {
-    hideLoading();
-    console.error("Login API error:", e);
-
-    $('#loginError').textContent = 'Login system unavailable';
-    $('#loginError').classList.add('visible');
-    toast('Login failed. Try again.', 'error');
-  }
-}
-
-
-function doLogout() {
-  currentUser = null;
-  patronStatus = null;
-  $('#userInfo').classList.remove('visible');
-  $('#btnLogin').style.display = 'block';
-  $('#btnLogout').style.display = 'none';
-  $('#btnHoldsTab').style.display = 'none'; // Hide holds tab
-  $('#patronStatusBar').classList.remove('visible'); // Hide status bar
-  
-  // Switch back to browse tab if on holds
-  const activeBtn = document.querySelector('.nav-btn.active');
-  if (activeBtn && activeBtn.dataset.tab === 'holds') {
-    $$('.nav-btn')[0].click(); // Click first tab (Browse)
-  }
-  
-  hideTimeout();
-  toast('Signed out');
-}
-
-// ── Get Now modal (card OR name) ──────────────────────────────────────────────
-let _pendingGetNowMovie = null;
-let _pendingHoldAfterLogin = false;
-
-function showGetNowLogin(movie) {
-  _pendingGetNowMovie = movie || currentMovie;
-  $('#getNowInput').value = '';
-  $('#getNowInput').placeholder = 'Card number or name';
-  $('#getNowError').textContent = '';
-  $('#getNowError').classList.remove('visible');
-  $('#getNowNumpad').style.display = 'grid';
-  $('#btnGetNowKeyboard').style.display = 'block';
-  $('#getNowModal').classList.add('visible');
-  setTimeout(() => $('#getNowInput').focus(), 100);
-}
-
-function closeGetNowModal() {
-  $('#getNowModal').classList.remove('visible');
-  // Hide OSK if it was open for Get Now
-  const osk = $('#oskContainer');
-  if (osk.classList.contains('visible')) {
-    osk.classList.remove('visible');
-    $('.main').classList.remove('osk-open');
-    document.body.classList.remove('getnow-osk-open');
-    $('#oskDoneBtn').style.display = 'none';
-  }
-  _pendingGetNowMovie = null;
-}
-
-async function doGetNowLogin() {
-  const input = $('#getNowInput').value.trim();
-  if (!input) {
-    $('#getNowError').textContent = 'Please enter your card number or name';
-    $('#getNowError').classList.add('visible');
-    return;
-  }
-
-  const isBarcode = /^\d+$/.test(input);
-
-  if (isBarcode) {
-    // Validate card via API
-    showLoading('Checking card...', 'Please wait');
-    try {
-      const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(input)}`);
-      const data = await res.json();
-      if (!data.ok || !data.patron) {
-        hideLoading();
-        $('#getNowError').textContent = 'Card not found';
-        $('#getNowError').classList.add('visible');
-        return;
-      }
-      currentUser = data.patron;
-
-      // Load status silently
-      try {
-        const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(input)}`);
-        const statusData = await statusRes.json();
-        if (statusData.ok) {
-          patronStatus = statusData;
-          $('#patronName').textContent = statusData.patronName;
-          $('#patronFines').textContent = '$' + statusData.fines.total.toFixed(2);
-          $('#dvdCount').textContent = statusData.checkouts.dvds;
-          const finesDisplay = $('#patronFinesDisplay');
-          finesDisplay.classList.remove('warning', 'good');
-          finesDisplay.classList.add(statusData.fines.total > 0 ? 'warning' : 'good');
-          const counter = $('#checkoutCounter');
-          counter.classList.remove('warning', 'blocked');
-          if (statusData.checkouts.dvds >= 5) counter.classList.add('blocked');
-          else if (statusData.checkouts.dvds >= 4) counter.classList.add('warning');
-          $('#patronStatusBar').classList.add('visible');
-        }
-      } catch(e) {}
-
-      hideLoading();
-    } catch(e) {
-      hideLoading();
-      $('#getNowError').textContent = 'Login system unavailable';
-      $('#getNowError').classList.add('visible');
-      return;
-    }
-  } else {
-    // Name only — no API call, no validation
-    currentUser = { name: input, barcode: null, id: null, nameOnly: true };
-    patronStatus = null;
-  }
-
-  // Update header
-  $('#userName').textContent = `Hello, ${currentUser.name}!`;
-  $('#userCard').textContent = currentUser.barcode ? `Card: ${currentUser.barcode}` : 'Name sign-in';
-  $('#userInfo').classList.add('visible');
-  $('#btnLogin').style.display = 'none';
-  $('#btnLogout').style.display = 'block';
-  if (!currentUser.nameOnly) $('#btnHoldsTab').style.display = 'block';
-
-  closeGetNowModal();
-  toast(`Welcome, ${currentUser.name}!`, 'success');
-  resetIdleTimer();
-
-  // Now proceed with the Get Now request
-  await requestMovie('now');
-}
-
-// Load patron holds
-async function loadHolds() {
-  if (!currentUser) return;
-  
-  $('#holdsLoading').style.display = 'block';
-  $('#holdsContent').style.display = 'none';
-  $('#holdsEmpty').style.display = 'none';
-  
-  try {
-    const res = await fetch(`api/patron-holds.php?patronBarcode=${encodeURIComponent(currentUser.barcode)}`);
-    const data = await res.json();
-    
-    if (!data.ok) {
-      toast('Failed to load holds', 'error');
-      return;
-    }
-    
-    const holds = data.holds || [];
-    
-    if (holds.length === 0) {
-      $('#holdsLoading').style.display = 'none';
-      $('#holdsEmpty').style.display = 'block';
-      return;
-    }
-    
-    // Group holds by status
-    const ready = holds.filter(h => h.RequestStatusDescription === 'Held');
-    const waiting = holds.filter(h => ['Active', 'Pending', 'Shipped'].includes(h.RequestStatusDescription));
-    const other = holds.filter(h => !['Held', 'Active', 'Pending', 'Shipped'].includes(h.RequestStatusDescription));
-    
-    // Display holds
-    $('#holdsReady').innerHTML = ready.length > 0 
-      ? `<div class="holds-section-title">📦 Ready for Pickup (${ready.length})</div>` + ready.map(renderHold).join('')
-      : '';
-      
-    $('#holdsWaiting').innerHTML = waiting.length > 0
-      ? `<div class="holds-section-title">⏳ Waiting (${waiting.length})</div>` + waiting.map(renderHold).join('')
-      : '';
-      
-    $('#holdsOther').innerHTML = other.length > 0
-      ? `<div class="holds-section-title">📋 Other (${other.length})</div>` + other.map(renderHold).join('')
-      : '';
-    
-    $('#holdsLoading').style.display = 'none';
-    $('#holdsContent').style.display = 'block';
-    
-  } catch (e) {
-    console.error('Failed to load holds:', e);
-    toast('Failed to load holds', 'error');
-    $('#holdsLoading').style.display = 'none';
-  }
-}
-
-// Render a single hold card
-function renderHold(hold) {
-  const statusClass = hold.RequestStatusDescription === 'Held' ? 'ready' 
-    : hold.RequestStatusDescription === 'Pending' ? 'pending'
-    : 'shipped';
-  
-  const canCancel = ['Active', 'Pending', 'Shipped', 'Held'].includes(hold.RequestStatusDescription);
-  
-  // Build cover URL from the movies array if we have the barcode
-  let coverSrc = NO_COVER;
-  if (hold.ItemBarcode) {
-    const movie = movies.find(m => m.barcode === hold.ItemBarcode);
-    if (movie && movie.cover) {
-      coverSrc = movie.cover;
-    }
-  }
-  
-  return `
-    <div class="hold-card">
-      <img src="${coverSrc}" class="hold-poster" onerror="this.src='${NO_COVER}'" alt="${esc(hold.BrowseTitle)}">
-      <div class="hold-details">
-        <div class="hold-title">${esc(hold.BrowseTitle)}</div>
-        <div class="hold-meta">📍 Pickup: ${esc(hold.PickupBranchName)}</div>
-        <div class="hold-meta">📅 Requested: ${formatDate(hold.StatusDate)}</div>
-        ${hold.ItemBarcode ? `<div class="hold-meta">🏷️ Barcode: ${esc(hold.ItemBarcode)}</div>` : ''}
-        <span class="hold-status ${statusClass}">${esc(hold.RequestStatusDescription)}</span>
-        ${canCancel ? `
-          <div class="hold-actions">
-            <button class="btn btn-gray" onclick="cancelHold(${hold.RequestID})">Cancel Hold</button>
-          </div>
-        ` : ''}
-      </div>
-    </div>
-  `;
-}
-
-// Cancel a hold
-async function cancelHold(holdRequestId) {
-  if (!confirm('Are you sure you want to cancel this hold?')) return;
-  
-  showLoading('Cancelling hold...', 'Please wait');
-  
-  try {
-    console.log('Cancelling hold:', holdRequestId, 'for patron:', currentUser.barcode);
-    
-    const res = await fetch('api/cancel-hold.php', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        holdRequestId: holdRequestId,
-        patronBarcode: currentUser.barcode
-      })
+function attachDrag() {
+  $$('.req-card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', e => {
+      dragSrcId = card.dataset.id;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
     });
-    
-    console.log('Cancel response status:', res.status);
-    
-    const responseText = await res.text();
-    console.log('Cancel response text:', responseText);
-    
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      console.error('Failed to parse cancel response:', e);
-      hideLoading();
-      toast('Cancel failed (invalid response)', 'error');
-      return;
-    }
-    
-    console.log('Cancel response data:', data);
-    
-    hideLoading();
-    
-    if (data.ok) {
-      toast('Hold cancelled successfully', 'success');
-      loadHolds(); // Reload holds
-    } else {
-      toast('Failed to cancel: ' + (data.error || 'Unknown error'), 'error');
-    }
-  } catch (e) {
-    hideLoading();
-    console.error('Cancel hold error:', e);
-    toast('Failed to cancel hold', 'error');
-  }
-}
-
-// Format date
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-// Request movie
-async function requestMovie(type) {
-  if (!currentMovie?.barcode) {
-    toast('Movie not selected', 'error');
-    return;
-  }
-
-  const isAvailable = currentMovie.available === true;
-
-  if (type === 'now' && !isAvailable) {
-    toast('This DVD is checked out. Place a hold to reserve it.', 'error');
-    return;
-  }
-
-  if (type === 'now' && !currentUser) {
-    closeMovie();
-    showGetNowLogin();
-    return;
-  }
-
-  if (type === 'hold') {
-    if (!currentUser || !currentUser.barcode || currentUser.nameOnly) {
-      _pendingHoldAfterLogin = true;
-      closeMovie();
-      showHoldLogin();
-      return;
-    }
-  }
-  
-  if (patronStatus && !patronStatus.canCheckout && type === 'now' && currentUser?.barcode) {
-    let message = '⚠️ Cannot check out DVD. ';
-    if (patronStatus.blockReasons && patronStatus.blockReasons.length > 0) {
-      message += patronStatus.blockReasons.join('. ');
-    }
-    toast(message, 'error');
-    return;
-  }
-  
-  if (type === 'hold') {
-    showLoading('Placing hold...', 'This may take a few moments');
-  } else {
-    showLoading('Submitting request...', 'Please wait');
-  }
-  
-  try {
-    if (type === 'hold') {
-      try {
-        const holdBody = {
-          patronBarcode: currentUser.barcode,
-          itemBarcode: currentMovie.barcode,
-          dvdId: currentMovie.dvdId ?? null
-        };
-        if (currentMovie.bibRecordId) {
-          holdBody.bibRecordId = currentMovie.bibRecordId;
-        }
-
-        const holdRes = await fetch('api/hold.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(holdBody)
-        });
-
-        const responseText = await holdRes.text();
-        let holdData;
-        try {
-          holdData = JSON.parse(responseText);
-        } catch (parseError) {
-          hideLoading();
-          toast('Hold system error (invalid response)', 'error');
-          return;
-        }
-
-        if (!holdRes.ok || !holdData.ok) {
-          hideLoading();
-          toast('Hold failed: ' + (holdData.error || 'Unknown error'), 'error');
-          return;
-        }
-      } catch (e) {
-        hideLoading();
-        toast('Hold system unavailable', 'error');
-        return;
-      }
-    }
-
-    const reqData = {
-      movie: {
-        barcode: currentMovie.barcode,
-        dvdId: currentMovie.dvdId ?? null,
-        title: currentMovie.title,
-        callNumber: currentMovie.callNumber,
-        cover: currentMovie.cover,
-        bibRecordId: currentMovie.bibRecordId
-      },
-      patron: {
-        barcode: currentUser.barcode,
-        name: currentUser.name,
-        id: currentUser.id
-      },
-      type: type
-    };
-    
-    const res = await fetch('api/requests.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reqData)
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      $$('.req-card').forEach(c => c.classList.remove('drag-over'));
     });
-    
-    const data = await res.json();
-    
-    if (!data.ok) {
-      hideLoading();
-      toast('Request failed: ' + (data.error || 'Unknown error'), 'error');
-      return;
-    }
-    
-    hideLoading();
-    closeMovie();
-    
-    // PHASE 1: Refresh patron status after checkout
-    if (type === 'now' && currentUser) {
-      try {
-        const statusRes = await fetch(`api/patron-status.php?barcode=${encodeURIComponent(currentUser.barcode)}`);
-        const statusData = await statusRes.json();
-        if (statusData.ok) {
-          patronStatus = statusData;
-          $('#dvdCount').textContent = statusData.checkouts.dvds;
-          
-          const counter = $('#checkoutCounter');
-          counter.classList.remove('warning', 'blocked');
-          if (statusData.checkouts.dvds >= 5) {
-            counter.classList.add('blocked');
-          } else if (statusData.checkouts.dvds >= 4) {
-            counter.classList.add('warning');
-          }
-        }
-      } catch (e) {
-        console.error('Failed to refresh patron status:', e);
-      }
-    }
-    
-    if (type === 'hold') {
-      $('#confirmIcon').textContent = '📌';
-      $('#confirmTitle').textContent = 'Hold Placed!';
-      $('#confirmMsg').textContent = `"${currentMovie.title}" is on hold. We'll let you know when it's ready.`;
-    } else {
-      $('#confirmIcon').textContent = '✅';
-      $('#confirmTitle').textContent = 'Request Sent!';
-      $('#confirmMsg').textContent = `Staff will pull "${currentMovie.title}" for you. Please wait at the front desk.`;
-    }
-    
-    $('#confirmModal').classList.add('visible');
-    
-  } catch (e) {
-    hideLoading();
-    console.error('Request error:', e);
-    toast('Request failed', 'error');
-  }
-}
-
-// Event setup
-function setupEvents() {
-  // On-screen keyboard setup (defined first so oskShow/oskHide are available)
-  const osk = $('#oskContainer');
-  let oskTarget = $('#searchInput'); // which input the OSK types into
-  let oskMode = 'search'; // 'search' or 'getNow'
-
-  function oskShow(mode) {
-    oskMode = mode || 'search';
-    oskTarget = oskMode === 'getNow' ? $('#getNowInput') : $('#searchInput');
-    osk.classList.add('visible');
-    if (oskMode === 'search') $('.main').classList.add('osk-open');
-    // Show/hide Done button
-    $('#oskDoneBtn').style.display = oskMode === 'getNow' ? 'flex' : 'none';
-    if (oskMode === 'getNow') document.body.classList.add('getnow-osk-open');
-  }
-  function oskHide() {
-    osk.classList.remove('visible');
-    $('.main').classList.remove('osk-open');
-    document.body.classList.remove('getnow-osk-open');
-    $('#oskDoneBtn').style.display = 'none';
-    oskMode = 'search';
-    oskTarget = $('#searchInput');
-  }
-
-  // searchTimeout declared here so OSK handlers can use it
-  let searchTimeout;
-
-  $$('.osk-key').forEach(key => {
-    key.addEventListener('pointerdown', (e) => {
+    card.addEventListener('dragover', e => {
       e.preventDefault();
-      key.classList.add('pressed');
-      const k = key.dataset.key;
-      const input = oskTarget;
-      const start = input.selectionStart;
-      const end = input.selectionEnd;
-      const val = input.value;
-      if (k === 'BACKSPACE') {
-        if (start !== end) {
-          input.value = val.slice(0, start) + val.slice(end);
-          input.setSelectionRange(start, start);
-        } else if (start > 0) {
-          input.value = val.slice(0, start - 1) + val.slice(end);
-          input.setSelectionRange(start - 1, start - 1);
-        }
-      } else if (k === 'CLEAR') {
-        input.value = '';
-      } else if (k === 'SPACE') {
-        input.value = val.slice(0, start) + ' ' + val.slice(end);
-        input.setSelectionRange(start + 1, start + 1);
-      } else if (k === 'APOSTROPHE') {
-        input.value = val.slice(0, start) + "'" + val.slice(end);
-        input.setSelectionRange(start + 1, start + 1);
-      } else if (k === 'COLON') {
-        input.value = val.slice(0, start) + ':' + val.slice(end);
-        input.setSelectionRange(start + 1, start + 1);
-      } else {
-        input.value = val.slice(0, start) + k + val.slice(end);
-        input.setSelectionRange(start + 1, start + 1);
-      }
-      if (oskMode === 'search') {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => { doSearch(input.value); resetIdleTimer(); }, 150);
-      } else if (oskMode === 'getNow' && k === 'DONE') {
-        oskHide();
-        doGetNowLogin();
-      }
+      e.dataTransfer.dropEffect = 'move';
+      $$('.req-card').forEach(c => c.classList.remove('drag-over'));
+      card.classList.add('drag-over');
     });
-    key.addEventListener('pointerup', () => key.classList.remove('pressed'));
-    key.addEventListener('pointerleave', () => key.classList.remove('pressed'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      if (dragSrcId && dragSrcId !== card.dataset.id) reorder(dragSrcId, card.dataset.id);
+    });
+  });
+}
+
+async function reorder(srcId, destId) {
+  const si = requests.findIndex(r => r.id === srcId);
+  const di = requests.findIndex(r => r.id === destId);
+  if (si === -1 || di === -1) return;
+  const [moved] = requests.splice(si, 1);
+  requests.splice(di, 0, moved);
+  renderRequests();
+  try {
+    await fetch('../api/requests.php', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ reorder: requests.map(r => r.id) })
+    });
+  } catch(e) {}
+}
+
+// ── STATS ──────────────────────────────────────────────────────────────────────
+function updateStats(stats) {
+  $('#statPending').textContent = stats?.pendingNow   || 0;
+  $('#statHolds').textContent   = stats?.pendingHolds || 0;
+  $('#statToday').textContent   = stats?.today        || 0;
+  $('#statTotal').textContent   = stats?.total        || 0;
+  const total = (stats?.pendingNow || 0) + (stats?.pendingHolds || 0);
+  const badge = $('#reqBadge');
+  badge.textContent   = total;
+  badge.style.display = total > 0 ? 'inline' : 'none';
+  document.title = total > 0 ? `(${total}) Staff Dashboard` : 'Staff Dashboard';
+}
+
+// ── PICKERS ────────────────────────────────────────────────────────────────────
+function renderPickers() {
+  renderPicker('featured', featuredBarcodes, '#featuredTags', '#featuredList', '#featuredSearch');
+  renderPicker('arrivals',  arrivalsBarcodes,  '#arrivalsTags',  '#arrivalsList',  '#arrivalsSearch');
+}
+function renderPicker(type, list, tagsEl, listEl, searchEl) {
+  $(tagsEl).innerHTML = list.map(bc => {
+    const m = movieMap[bc]; if (!m) return '';
+    return `<div class="selected-tag"><img src="${m.cover||NO_COVER}" onerror="this.src='${NO_COVER}'"><span>${esc(m.title)}</span><span class="rm" onclick="removeFrom('${type}','${bc}')">&times;</span></div>`;
+  }).join('') || '<span style="color:var(--muted);font-size:12px;">None selected</span>';
+  const q = ($(searchEl)?.value||'').toLowerCase();
+  $(listEl).innerHTML = movies.filter(m => !list.includes(m.barcode) && (!q||(m.title||'').toLowerCase().includes(q))).slice(0,50).map(m =>
+    `<div class="picker-item" onclick="addTo('${type}','${m.barcode}')">
+      <img src="${m.cover||NO_COVER}" onerror="this.src='${NO_COVER}'">
+      <div><div class="p-title">${esc(m.title)}</div><div class="p-bc">${m.barcode}</div></div>
+    </div>`).join('');
+}
+function renderMovieTable() {
+  const q = ($('#movieSearch')?.value || '').toLowerCase();
+  $('#movieBody').innerHTML = movies
+    .filter(m => !q || (m.title||'').toLowerCase().includes(q) || String(m.barcode||'').includes(q) || getShelfNumber(m).includes(q))
+    .map(m => {
+      const shelf = getShelfNumber(m);
+      const bc = m.barcode || '';
+      return `
+      <tr>
+        <td><img src="${m.cover||NO_COVER}" onerror="this.src='${NO_COVER}'"></td>
+        <td style="font-weight:700;color:var(--green-dark);">${shelf ? esc(shelf) : '—'}</td>
+        <td><strong class="selectable">${esc(m.title)}</strong></td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px;"><span class="copy-text">${esc(bc)}</span>${copyBtn(bc, 'barcode')}</td>
+        <td>${m.rating||'—'}</td>
+        <td><span class="copy-text">${esc(m.callNumber||'—')}</span>${m.callNumber ? copyBtn(m.callNumber, 'call number') : ''}</td>
+        <td>${m.status ? (m.available ? '✅ '+esc(m.status) : '❌ '+esc(m.status)) : '—'}</td>
+        <td><button class="btn btn-xs btn-secondary" onclick="editMovie('${bc}')">✏️ Edit</button></td>
+      </tr>`;
+    }).join('');
+}
+
+// ── SYNC FROM POLARIS ──────────────────────────────────────────────────────────
+async function checkSyncStatus() {
+  try {
+    const d = await fetch('../api/sync-movies.php').then(r => r.json());
+    const badge = $('#syncStatusBadge');
+    if (!badge) return;
+    if (d.running) {
+      badge.textContent = '⏳ Sync in progress…';
+      badge.style.color = '#1565c0';
+    } else if (d.meta) {
+      const ago = timeAgo(d.meta.lastSync);
+      badge.textContent = `Last sync: ${ago} · ${d.meta.count} movies`;
+      badge.style.color = '#4caf50';
+    } else {
+      badge.textContent = '⚠️ Never synced — using CSV fallback if available';
+      badge.style.color = '#e65100';
+    }
+  } catch(e) {}
+}
+
+async function syncFromPolaris() {
+  if (!confirm('This will re-fetch all DVDs from Polaris and rebuild the movie list.\n\nThis may take 30–60 seconds depending on collection size. Continue?')) return;
+
+  const btn = $('#btnSyncPolaris');
+  btn.disabled = true;
+  btn.textContent = '⏳ Syncing…';
+  $('#syncProgress').style.display = 'block';
+  $('#syncProgressBar').style.width = '5%';
+  $('#syncStatus').textContent = 'Connecting to Polaris…';
+
+  let fakeProgress = 5;
+  const msgs = ['Authenticating…', 'Fetching records…', 'Loading page 2…', 'Loading page 3…', 'Processing titles…', 'Building movie list…', 'Almost done…'];
+  let msgIdx = 0;
+  const progressTimer = setInterval(() => {
+    if (fakeProgress < 88) {
+      fakeProgress += Math.random() * 7 + 2;
+      $('#syncProgressBar').style.width = Math.min(fakeProgress, 88) + '%';
+      $('#syncStatus').textContent = msgs[Math.min(msgIdx++, msgs.length - 1)];
+    }
+  }, 800);
+
+  try {
+    const d = await fetch('../api/sync-movies.php', { method: 'POST' }).then(r => r.json());
+    clearInterval(progressTimer);
+
+    if (d.ok) {
+      $('#syncProgressBar').style.width = '100%';
+      $('#syncStatus').textContent = `✅ Synced ${d.count} movies successfully!`;
+      toast(`✅ Synced ${d.count} movies from Polaris!`, 'success');
+      await loadMovies();
+      renderMovieTable();
+      renderPickers();
+      checkSyncStatus();
+    } else {
+      $('#syncProgressBar').style.width = '0%';
+      $('#syncStatus').textContent = '❌ Sync failed: ' + (d.error || 'Unknown error');
+      toast('Sync failed: ' + (d.error || 'Unknown'), 'error');
+    }
+  } catch(e) {
+    clearInterval(progressTimer);
+    $('#syncProgressBar').style.width = '0%';
+    $('#syncStatus').textContent = '❌ Error: ' + e.message;
+    toast('Sync error: ' + e.message, 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '↓ Sync Movies from Polaris';
+}
+
+async function syncCovers() {
+  if (!confirm('Fetch cover images from Polaris/Syndetics for movies that are missing them?\n\nThis runs in batches and may take several minutes.')) return;
+
+  const btn = $('#btnSyncCovers');
+  btn.disabled = true;
+  btn.textContent = '⏳ Fetching covers…';
+  $('#syncProgress').style.display = 'block';
+  $('#syncProgressBar').style.width = '10%';
+  $('#syncStatus').textContent = 'Starting cover sync…';
+
+  let remaining = 1;
+  let totalUpdated = 0;
+
+  try {
+    while (remaining > 0) {
+      const d = await fetch('../api/sync-covers.php', { method: 'POST' }).then(r => r.json());
+      if (!d.ok) {
+        toast('Cover sync failed: ' + (d.error || 'Unknown'), 'error');
+        break;
+      }
+
+      totalUpdated += d.updated || 0;
+      remaining = d.remaining ?? 0;
+      const stats = d.stats || {};
+      const pct = stats.total ? Math.round(((stats.withCover || 0) / stats.total) * 100) : 0;
+      $('#syncProgressBar').style.width = pct + '%';
+      $('#syncStatus').textContent = `Covers: ${stats.withCover || 0}/${stats.total || 0} (${remaining} remaining)`;
+
+      if (d.done || remaining === 0) {
+        toast(`Cover sync done — ${totalUpdated} new covers`, 'success');
+        break;
+      }
+
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    await loadMovies();
+    renderMovieTable();
+    renderPickers();
+  } catch (e) {
+    toast('Cover sync error: ' + e.message, 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🖼️ Build Missing Covers';
+}
+
+// ── ACTIONS ────────────────────────────────────────────────────────────────────
+async function completeReq(id) {
+  await fetch('../api/requests.php', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id, completed:true}) });
+  toast('Marked complete ✅','success'); loadRequests();
+}
+async function deleteReq(id) {
+  if (!confirm('Remove this request?')) return;
+  await fetch(`../api/requests.php?id=${id}`, {method:'DELETE'});
+  toast('Request removed'); loadRequests();
+}
+function addTo(type, bc) {
+  if (type==='featured' && !featuredBarcodes.includes(bc)) featuredBarcodes.push(bc);
+  if (type==='arrivals'  && !arrivalsBarcodes.includes(bc))  arrivalsBarcodes.push(bc);
+  renderPickers();
+}
+function removeFrom(type, bc) {
+  if (type==='featured') featuredBarcodes = featuredBarcodes.filter(x=>x!==bc);
+  if (type==='arrivals')  arrivalsBarcodes  = arrivalsBarcodes.filter(x=>x!==bc);
+  renderPickers();
+}
+async function savePicker(type) {
+  const list = type==='featured' ? featuredBarcodes : arrivalsBarcodes;
+  const key  = type==='featured' ? 'featured' : 'newArrivals';
+  await fetch('../api/settings.php', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({[key]:list})});
+  toast('Saved!','success');
+}
+async function saveSettings() {
+  await fetch('../api/settings.php', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    libraryName:$('#setLibraryName').value, timeout:parseInt($('#setTimeout').value)||60,
+    warning:parseInt($('#setWarning').value)||15, showFeatured:$('#setShowFeatured').checked,
+    showArrivals:$('#setShowArrivals').checked, sound:$('#setSound').checked, autoRefresh:$('#setAutoRefresh').checked,
+    autoSyncMovies:$('#setAutoSyncMovies').checked, syncIntervalMinutes:parseInt($('#setSyncInterval').value)||15
+  })});
+  toast('Settings saved!','success');
+}
+function editMovie(bc) {
+  const m = movieMap[bc]||{barcode:bc};
+  $('#editBarcode').value=bc; $('#editTitle').value=m.title||''; $('#editRating').value=m.rating||'';
+  $('#editCallNumber').value=m.callNumber||''; $('#editLocation').value=m.location||''; $('#editDescription').value=m.description||'';
+  $('#editCoverPreview').src=m.cover||NO_COVER;
+  $('#editModal').classList.add('visible');
+}
+async function saveMovie() {
+  const bc=$('#editBarcode').value;
+  await fetch('../api/movies.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    barcode:bc,title:$('#editTitle').value,rating:$('#editRating').value,
+    callNumber:$('#editCallNumber').value,location:$('#editLocation').value,description:$('#editDescription').value
+  })});
+  toast('Movie updated!','success'); $('#editModal').classList.remove('visible');
+  await loadMovies(); renderMovieTable(); renderPickers();
+}
+async function uploadCover(file) {
+  const bc=$('#editBarcode').value; if(!bc) return;
+  const fd=new FormData(); fd.append('image',file); fd.append('barcode',bc);
+  const d=await fetch('../api/upload.php',{method:'POST',body:fd}).then(r=>r.json());
+  if(d.ok){$('#editCoverPreview').src=d.url;toast('Image uploaded!','success');}else toast('Upload failed: '+d.error,'error');
+}
+async function refreshSingle() {
+  const bc=$('#refreshBarcode').value.trim(); if(!bc){toast('Enter a barcode','error');return;}
+  const d=await fetch(`../api/movies.php?action=refresh&barcode=${encodeURIComponent(bc)}`,{method:'PUT'}).then(r=>r.json());
+  if(d.ok){toast('Refreshed!','success');await loadMovies();renderMovieTable();}else toast('Failed: '+(d.error||'Unknown'),'error');
+}
+
+// ── EVENTS ─────────────────────────────────────────────────────────────────────
+function setupEvents() {
+  $$('.nav-item').forEach(n => n.onclick = () => {
+    $$('.nav-item').forEach(x=>x.classList.remove('active')); n.classList.add('active');
+    $$('.page').forEach(p=>p.classList.remove('active'));
+    document.getElementById('page'+n.dataset.page.charAt(0).toUpperCase()+n.dataset.page.slice(1))?.classList.add('active');
+    $('#pageTitle').textContent = n.textContent.replace(/\d/g,'').trim();
+    if (n.dataset.page === 'cache') checkSyncStatus();
   });
 
-  // Get Now keyboard toggle button
-  $('#btnGetNowKeyboard').onclick = () => {
-    $('#getNowNumpad').style.display = 'none';
-    $('#btnGetNowKeyboard').style.display = 'none';
-    $('#getNowInput').placeholder = 'Type your name';
-    $('#getNowInput').value = '';
-    $('#getNowError').textContent = '';
-    if (window.matchMedia('(orientation: portrait)').matches) {
-      oskShow('getNow');
-    }
-    setTimeout(() => $('#getNowInput').focus(), 100);
+  $('#btnRefresh').onclick   = loadRequests;
+  $('#chkShowDone').onchange = e => { showDone=e.target.checked; renderRequests(); };
+  $('#btnClearDone').onclick = async () => {
+    if(!confirm('Remove all completed requests?')) return;
+    await fetch('../api/requests.php?clearCompleted=true',{method:'DELETE'}); toast('Cleared'); loadRequests();
   };
 
-  // Tab navigation
-  $$('.nav-btn').forEach(btn => {
-    btn.onclick = () => {
-      $$('.nav-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      
-      $$('.section').forEach(s => s.classList.remove('active'));
-      $(`#tab${btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1)}`).classList.add('active');
-      
-      $('#searchBar').classList.toggle('visible', btn.dataset.tab === 'search');
-      if (btn.dataset.tab === 'search') {
-        setTimeout(() => $('#searchInput').focus(), 100);
-        if (window.matchMedia('(orientation: portrait)').matches) oskShow('search');
-      } else {
-        oskHide();
-      }
-      
-      // Load holds when holds tab is clicked
-      if (btn.dataset.tab === 'holds' && currentUser) {
-        loadHolds();
-      }
-      
-      resetIdleTimer();
-    };
-  });
-  
-  // Search with debounce
-  $('#searchInput').addEventListener('input', (e) => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      doSearch(e.target.value);
-      resetIdleTimer();
-    }, 300);
-  });
+  $('#featuredSearch').oninput = () => renderPicker('featured',featuredBarcodes,'#featuredTags','#featuredList','#featuredSearch');
+  $('#arrivalsSearch').oninput  = () => renderPicker('arrivals',arrivalsBarcodes,'#arrivalsTags','#arrivalsList','#arrivalsSearch');
+  $('#btnSaveFeatured').onclick  = () => savePicker('featured');
+  $('#btnSaveArrivals').onclick  = () => savePicker('arrivals');
+  $('#movieSearch').oninput     = renderMovieTable;
+  $('#btnSaveSettings').onclick  = saveSettings;
 
-  // Movie modal
-  $('#btnCloseMovie').onclick = closeMovie;
-  $('#btnRequestNow').onclick = () => requestMovie('now');
-  $('#btnPlaceHold').onclick = () => requestMovie('hold');
-  $('#movieModal').onclick = e => { if (e.target.id === 'movieModal') closeMovie(); };
-  
-  // Login
-  $('#btnLogin').onclick = showLogin;
-  $('#btnLogout').onclick = doLogout;
-  $('#btnCancelLogin').onclick = closeLogin;
-  $('#loginModal').onclick = e => { if (e.target.id === 'loginModal') closeLogin(); };
-  
-  // Numpad (card-only login)
-  $$('.num-btn').forEach(b => {
-    b.onclick = () => {
-      const n = b.dataset.n;
-      if (!n) return;
-      const inp = $('#barcodeInput');
-      if (n === '⌫') inp.value = inp.value.slice(0, -1);
-      else if (n === 'GO') doLogin();
-      else inp.value += n;
-      inp.focus();
-    };
-  });
-  
-  $('#barcodeInput').onkeypress = e => { if (e.key === 'Enter') doLogin(); };
-
-  // Get Now modal
-  $('#btnCancelGetNow').onclick = closeGetNowModal;
-  $('#getNowModal').onclick = e => { if (e.target.id === 'getNowModal') closeGetNowModal(); };
-  $('#getNowInput').onkeypress = e => { if (e.key === 'Enter') doGetNowLogin(); };
-  $('#getNowInput').oninput = () => {
-    // Toggle numpad: show for digits-only input, hide when letters typed
-    const val = $('#getNowInput').value;
-    const isNum = /^\d*$/.test(val);
-    $('#getNowNumpad').style.display = isNum ? 'grid' : 'none';
+  // Sync / Cache page
+  $('#btnSyncPolaris').onclick = syncFromPolaris;
+  $('#btnSyncCovers').onclick = syncCovers;
+  $('#btnResetAvail').onclick  = async () => {
+    if (!confirm('Clear legacy availability cache files? (Not needed for normal operation.)')) return;
+    try {
+      const d = await fetch('../api/reset-cache.php').then(r => r.json());
+      if (d.ok) toast('Availability cache reset!', 'success');
+      else toast('Reset failed', 'error');
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  };
+  $('#btnRefreshSingle').onclick = refreshSingle;
+  $('#btnClearOverrides').onclick = async () => {
+    if(!confirm('Clear ALL custom movie edits?')) return;
+    await fetch('../api/settings.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_clearOverrides:true})});
+    toast('Overrides cleared','success'); await loadMovies(); renderMovieTable();
   };
 
-  $$('[data-gn]').forEach(b => {
-    b.onclick = () => {
-      const n = b.dataset.gn;
-      const inp = $('#getNowInput');
-      if (n === '⌫') inp.value = inp.value.slice(0, -1);
-      else if (n === 'GO') doGetNowLogin();
-      else inp.value += n;
-      inp.focus();
-      // Keep numpad visible while typing numbers
-      $('#getNowNumpad').style.display = 'grid';
-    };
-  });
-  
-  // Confirmation
-  $('#btnConfirmOK').onclick = () => $('#confirmModal').classList.remove('visible');
-  
-  // Timeout
-  $('#btnStayHere').onclick = () => { hideTimeout(); resetIdleTimer(); };
-  
-  // Global activity
-  document.addEventListener('click', resetIdleTimer);
-  document.addEventListener('touchstart', resetIdleTimer);
+  // Edit modal
+  $('#btnCloseEdit').onclick  = () => $('#editModal').classList.remove('visible');
+  $('#btnCancelEdit').onclick = () => $('#editModal').classList.remove('visible');
+  $('#btnSaveEdit').onclick   = saveMovie;
+  $('#editModal').onclick = e => { if(e.target===$('#editModal')) $('#editModal').classList.remove('visible'); };
+  $('#imgUpload').onclick     = () => $('#editCoverFile').click();
+  $('#editCoverFile').onchange = e => { if(e.target.files[0]) uploadCover(e.target.files[0]); };
 }
 
-// Idle timeout
-function resetIdleTimer() {
-  if (!currentUser) return;
-  
-  clearTimeout(idleTimer);
-  clearInterval(warnInterval);
-  hideTimeout();
-  
-  idleTimer = setTimeout(showTimeout, TIMEOUT_IDLE);
+function startAutoRefresh() {
+  if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(() => { if($('#setAutoRefresh')?.checked!==false) loadRequests(); }, 10000);
+}
+function toast(msg,type='') {
+  const t=$('#toast'); t.textContent=msg; t.className='toast visible '+type;
+  setTimeout(()=>t.classList.remove('visible'),3000);
+}
+function getShelfNumber(m) {
+  if (!m) return '';
+  if (m.shelfNumber) return String(m.shelfNumber);
+  if (m.dvdId && /^\d{1,4}$/.test(String(m.dvdId))) return String(m.dvdId);
+  if (!m.callNumber) return '';
+  const parts = m.callNumber.trim().split(/\s+/);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (/^\d{1,4}$/.test(parts[i])) return parts[i];
+  }
+  return '';
 }
 
-function showTimeout() {
-  let sec = TIMEOUT_WARN / 1000;
-  $('#timeoutNum').textContent = sec;
-  $('#timeoutBar').classList.add('visible');
-  
-  warnInterval = setInterval(() => {
-    sec--;
-    $('#timeoutNum').textContent = sec;
-    if (sec <= 0) {
-      hideTimeout();
-      doLogout();
-      toast('Session ended');
+async function copyText(text, label) {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(String(text));
+    toast(`Copied ${label || 'text'}`, 'success');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = String(text);
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      toast(`Copied ${label || 'text'}`, 'success');
+    } catch (e2) {
+      toast('Copy failed', 'error');
     }
-  }, 1000);
+    document.body.removeChild(ta);
+  }
 }
 
-function hideTimeout() {
-  $('#timeoutBar').classList.remove('visible');
-  clearInterval(warnInterval);
+function jsStr(s) {
+  return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
 }
 
-// Toast
-function toast(msg, type = '') {
-  const t = $('#toast');
-  t.textContent = msg;
-  t.className = 'toast visible ' + type;
-  setTimeout(() => t.classList.remove('visible'), 3000);
+function copyBtn(text, label) {
+  if (!text) return '';
+  return `<button type="button" class="copy-btn" title="Copy ${esc(label)}" onclick="event.stopPropagation();copyText('${jsStr(text)}','${jsStr(label)}')">📋</button>`;
 }
 
-// Escape HTML
+function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 
-
-// Start
 init();
 </script>
-<!-- Loading Overlay -->
-<div class="loading-overlay" id="loadingOverlay">
-  <div class="loading-spinner"></div>
-  <div class="loading-text" id="loadingText">Loading...</div>
-  <div class="loading-subtext" id="loadingSubtext"></div>
-</div>
-
 </body>
 </html>
