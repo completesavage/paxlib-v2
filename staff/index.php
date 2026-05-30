@@ -310,7 +310,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
         </div>
         <div class="card-body" style="padding:0;max-height:520px;overflow-y:auto;">
           <table class="table">
-            <thead><tr><th>Cover</th><th>#</th><th>Title</th><th>Barcode</th><th>Rating</th><th>Call #</th><th></th></tr></thead>
+            <thead><tr><th>Cover</th><th>#</th><th>Title</th><th>Barcode</th><th>Rating</th><th>Call #</th><th>Status</th><th></th></tr></thead>
             <tbody id="movieBody"></tbody>
           </table>
         </div>
@@ -386,16 +386,16 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
         </div>
       </div>
 
-      <!-- Availability cache -->
+      <!-- Availability cache (legacy) -->
       <div class="card">
-        <div class="card-head"><h3>🔄 Availability Cache</h3></div>
+        <div class="card-head"><h3>🔄 Legacy Availability Cache</h3></div>
         <div class="card-body">
           <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">
-            Movie availability (In / Checked Out) is cached by the background checker on the kiosk page.
-            Click below to clear it and force a fresh check.
+            The kiosk now reads In/Out status from the Polaris recordset when you sync movies above.
+            Use this only to clear old availability data from the previous background checker.
           </p>
-          <button class="btn btn-secondary" id="btnResetAvail">🗑️ Reset Availability Cache</button>
-          <div class="form-hint">The kiosk will rebuild availability automatically after reset.</div>
+          <button class="btn btn-secondary" id="btnResetAvail">🗑️ Reset Legacy Availability Cache</button>
+          <div class="form-hint">Not required for normal operation after recordset sync.</div>
           <hr style="margin:20px 0;border:none;border-top:1px solid var(--border);">
           <div class="form-group">
             <label class="form-label">Refresh Cover for Single Movie</label>
@@ -494,7 +494,9 @@ async function loadMovies() {
     if (d.ok) {
       movies = d.items || [];
       movieMap = Object.fromEntries(movies.map(m => [m.barcode, m]));
-      $('#movieCount').textContent = `${movies.length} movies`;
+      const src = d.source === 'recordset' ? 'Polaris recordset' : (d.source === 'csv' ? 'CSV fallback' : d.source);
+      const syncHint = d.lastSync ? ` · synced ${timeAgo(d.lastSync)}` : '';
+      $('#movieCount').textContent = `${movies.length} movies (${src}${syncHint})`;
     }
   } catch(e) { console.error(e); }
 }
@@ -722,6 +724,7 @@ function renderMovieTable() {
         <td><strong>${esc(m.title)}</strong></td>
         <td style="font-family:'DM Mono',monospace;font-size:12px;">${m.barcode}</td>
         <td>${m.rating||'—'}</td><td>${m.callNumber||'—'}</td>
+        <td>${m.status ? (m.available ? '✅ '+esc(m.status) : '❌ '+esc(m.status)) : '—'}</td>
         <td><button class="btn btn-xs btn-secondary" onclick="editMovie('${m.barcode}')">✏️ Edit</button></td>
       </tr>`).join('');
 }
@@ -884,7 +887,7 @@ function setupEvents() {
   // Sync / Cache page
   $('#btnSyncPolaris').onclick = syncFromPolaris;
   $('#btnResetAvail').onclick  = async () => {
-    if (!confirm('Reset availability cache? The kiosk will rebuild it automatically.')) return;
+    if (!confirm('Clear legacy availability cache files? (Not needed for normal operation.)')) return;
     try {
       const d = await fetch('../api/reset-cache.php').then(r => r.json());
       if (d.ok) toast('Availability cache reset!', 'success');
