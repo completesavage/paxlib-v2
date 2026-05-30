@@ -348,6 +348,18 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
             </div>
           </div>
           <div class="form-group">
+            <label class="form-label">Polaris Sync</label>
+            <div class="toggle-row">
+              <div><div class="toggle-label">Auto-sync movies</div><div class="toggle-desc">Kiosk re-fetches the recordset when data is stale</div></div>
+              <label class="toggle"><input type="checkbox" id="setAutoSyncMovies" <?php echo ($settings['autoSyncMovies'] ?? true) ? 'checked' : ''; ?>><span class="toggle-slider"></span></label>
+            </div>
+            <div style="margin-top:10px;">
+              <label class="form-label">Sync interval (minutes)</label>
+              <input type="number" class="form-input" id="setSyncInterval" value="<?php echo $settings['syncIntervalMinutes'] ?? 15; ?>" min="5" max="1440" style="width:120px;">
+              <div class="form-hint">How often the kiosk refreshes the movie list from Polaris</div>
+            </div>
+          </div>
+          <div class="form-group">
             <label class="form-label">Staff Dashboard</label>
             <div class="toggle-row">
               <div><div class="toggle-label">Sound Notifications</div><div class="toggle-desc">Play sound for new requests</div></div>
@@ -374,10 +386,14 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
         <div class="card-body">
           <p style="margin-bottom:15px;font-size:13px;color:var(--muted);">
             Pulls the current DVD collection directly from the Polaris recordset and rebuilds the movie list.
-            Run this whenever DVDs are added or removed from the collection.
+            In/Out status comes from the recordset. Covers are fetched separately from Polaris → Syndetics.
+            The kiosk auto-syncs every <?php echo (int)($settings['syncIntervalMinutes'] ?? 15); ?> minutes and builds missing covers in the background.
           </p>
           <button class="btn btn-primary" id="btnSyncPolaris" style="font-size:15px;padding:12px 22px;">
             ↓ Sync Movies from Polaris
+          </button>
+          <button class="btn btn-secondary" id="btnSyncCovers" style="font-size:15px;padding:12px 22px;margin-left:10px;">
+            🖼️ Build Missing Covers
           </button>
           <div id="syncProgress" style="display:none;margin-top:16px;">
             <div class="progress-wrap"><div class="progress-bar" id="syncProgressBar"></div></div>
@@ -798,6 +814,53 @@ async function syncFromPolaris() {
   btn.textContent = '↓ Sync Movies from Polaris';
 }
 
+async function syncCovers() {
+  if (!confirm('Fetch cover images from Polaris/Syndetics for movies that are missing them?\n\nThis runs in batches and may take several minutes.')) return;
+
+  const btn = $('#btnSyncCovers');
+  btn.disabled = true;
+  btn.textContent = '⏳ Fetching covers…';
+  $('#syncProgress').style.display = 'block';
+  $('#syncProgressBar').style.width = '10%';
+  $('#syncStatus').textContent = 'Starting cover sync…';
+
+  let remaining = 1;
+  let totalUpdated = 0;
+
+  try {
+    while (remaining > 0) {
+      const d = await fetch('../api/sync-covers.php', { method: 'POST' }).then(r => r.json());
+      if (!d.ok) {
+        toast('Cover sync failed: ' + (d.error || 'Unknown'), 'error');
+        break;
+      }
+
+      totalUpdated += d.updated || 0;
+      remaining = d.remaining ?? 0;
+      const stats = d.stats || {};
+      const pct = stats.total ? Math.round(((stats.withCover || 0) / stats.total) * 100) : 0;
+      $('#syncProgressBar').style.width = pct + '%';
+      $('#syncStatus').textContent = `Covers: ${stats.withCover || 0}/${stats.total || 0} (${remaining} remaining)`;
+
+      if (d.done || remaining === 0) {
+        toast(`Cover sync done — ${totalUpdated} new covers`, 'success');
+        break;
+      }
+
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    await loadMovies();
+    renderMovieTable();
+    renderPickers();
+  } catch (e) {
+    toast('Cover sync error: ' + e.message, 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🖼️ Build Missing Covers';
+}
+
 // ── ACTIONS ────────────────────────────────────────────────────────────────────
 async function completeReq(id) {
   await fetch('../api/requests.php', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id, completed:true}) });
@@ -828,7 +891,8 @@ async function saveSettings() {
   await fetch('../api/settings.php', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     libraryName:$('#setLibraryName').value, timeout:parseInt($('#setTimeout').value)||60,
     warning:parseInt($('#setWarning').value)||15, showFeatured:$('#setShowFeatured').checked,
-    showArrivals:$('#setShowArrivals').checked, sound:$('#setSound').checked, autoRefresh:$('#setAutoRefresh').checked
+    showArrivals:$('#setShowArrivals').checked, sound:$('#setSound').checked, autoRefresh:$('#setAutoRefresh').checked,
+    autoSyncMovies:$('#setAutoSyncMovies').checked, syncIntervalMinutes:parseInt($('#setSyncInterval').value)||15
   })});
   toast('Settings saved!','success');
 }
@@ -886,6 +950,7 @@ function setupEvents() {
 
   // Sync / Cache page
   $('#btnSyncPolaris').onclick = syncFromPolaris;
+  $('#btnSyncCovers').onclick = syncCovers;
   $('#btnResetAvail').onclick  = async () => {
     if (!confirm('Clear legacy availability cache files? (Not needed for normal operation.)')) return;
     try {
