@@ -17,3 +17,6 @@ define('SYNDETICS_CLIENT', 'ilheartland');
 
 // Optional: Session timeout in seconds (default 90)
 define('SESSION_TIMEOUT', 90);
+
+// Polaris record set ID for the kiosk DVD collection
+define('DVD_RECORDSET_ID', 473530);

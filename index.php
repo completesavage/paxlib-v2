@@ -978,9 +978,9 @@ function hideLoading() {
 
 let movies = [];
 let movieMap = {};
-let movieStatuses = {}; // barcode => {status, available}
 let currentFilter = 'all'; // 'all' or 'available'
-let statusesLoaded = false;
+let movieSource = 'unknown';
+let lastSync = null;
 let currentUser = null;
 let patronStatus = null; // Stores fines, checkout counts, blocking info
 let currentMovie = null;
@@ -990,14 +990,11 @@ let warnInterval = null;
 // Initialize
 async function init() {
   await loadMovies();
-  await loadStatuses(); // Load initial cache
   renderAll();
   setupEvents();
-  startAutoRefresh(); // Refresh cache from disk every 2 minutes
-  startContinuousCheck(); // Start continuous background checking (never stops)
 }
 
-// Load from cached movies API
+// Load movies (list + availability from Polaris recordset sync)
 async function loadMovies() {
   try {
     const res = await fetch('api/movies.php');
@@ -1005,118 +1002,20 @@ async function loadMovies() {
     if (data.ok) {
       movies = data.items || [];
       movieMap = Object.fromEntries(movies.map(m => [m.barcode, m]));
-      console.log(`Loaded ${movies.length} movies`);
+      movieSource = data.source || 'unknown';
+      lastSync = data.lastSync || null;
+      const availableCount = movies.filter(m => m.available === true).length;
+      console.log(`Loaded ${movies.length} movies from ${movieSource}` +
+        (lastSync ? ` (synced ${lastSync})` : '') +
+        ` — ${availableCount} available`);
+      if (movieSource === 'csv') {
+        console.warn('Using CSV fallback — run "Sync Movies from Polaris" in the staff dashboard for live In/Out status.');
+      }
       updateFilterCounts();
     }
   } catch (e) {
     console.error('Failed to load movies:', e);
   }
-}
-
-// Load availability statuses for all movies
-// Load availability from cache initially, then start continuous updates
-async function loadStatuses() {
-  console.log('Loading availability from cache...');
-  
-  try {
-    const res = await fetch('api/bulk-status.php?all=true');
-    const text = await res.text();
-    console.log('Raw response first 500 chars:', text.substring(0, 500));
-    
-    const data = JSON.parse(text);
-    console.log('Parsed data:', data);
-    console.log('data.statuses type:', typeof data.statuses);
-    console.log('data.statuses is array:', Array.isArray(data.statuses));
-    
-    if (Array.isArray(data.statuses)) {
-      console.error('ERROR: statuses is an array, should be an object with barcode keys!');
-      console.log('First item:', data.statuses[0]);
-      return;
-    }
-    
-    if (data.ok) {
-      movieStatuses = data.statuses;
-      statusesLoaded = true;
-      
-      console.log(`Loaded ${data.checked} statuses from cache`);
-      console.log('First 5 barcode keys:', Object.keys(movieStatuses).slice(0, 5));
-      
-      // Update movies
-      updateMovieAvailability();
-    }
-  } catch (e) {
-    console.error('Failed to load initial cache:', e);
-  }
-}
-
-// Update movie availability from current status cache
-function updateMovieAvailability() {
-  console.log('Updating movie availability...');
-  console.log('movieStatuses type:', typeof movieStatuses, 'is array:', Array.isArray(movieStatuses));
-  console.log('movieStatuses keys sample:', Object.keys(movieStatuses).slice(0, 5));
-  
-  let availableCount = 0;
-  movies.forEach(m => {
-    if (movieStatuses[m.barcode]) {
-      m.available = movieStatuses[m.barcode].available;
-      m.statusText = movieStatuses[m.barcode].status;
-      if (m.available) availableCount++;
-    }
-  });
-  
-  console.log(`${availableCount} available out of ${movies.length} movies`);
-  updateFilterCounts();
-  renderAll();
-}
-
-// Continuously check availability in the background
-async function startContinuousCheck() {
-  console.log('Starting continuous availability checker...');
-  
-  while (true) {
-    try {
-      const res = await fetch('api/continuous-availability.php');
-      const data = await res.json();
-      
-      if (data.ok) {
-        console.log(`Checked batch: ${data.percentComplete}% complete (cycle age: ${Math.floor(data.cycleAge/60)}min)`);
-        
-        // Reload cache to get updated statuses
-        const cacheRes = await fetch('api/bulk-status.php?all=true');
-        const cacheData = await cacheRes.json();
-        
-        if (cacheData.ok) {
-          movieStatuses = cacheData.statuses;
-          updateMovieAvailability();
-        }
-      }
-      
-      // Wait 15 seconds before next batch (gives time for API calls)
-      await new Promise(resolve => setTimeout(resolve, 15000));
-      
-    } catch (e) {
-      console.error('Continuous check error:', e);
-      // Wait 30 seconds on error before retrying
-      await new Promise(resolve => setTimeout(resolve, 30000));
-    }
-  }
-}
-
-// Auto-refresh - reload cache every 2 minutes (since continuous checker is updating it)
-function startAutoRefresh() {
-  setInterval(async () => {
-    console.log('Refreshing cache from disk...');
-    try {
-      const res = await fetch('api/bulk-status.php?all=true');
-      const data = await res.json();
-      if (data.ok) {
-        movieStatuses = data.statuses;
-        updateMovieAvailability();
-      }
-    } catch (e) {
-      console.error('Auto-refresh error:', e);
-    }
-  }, 2 * 60 * 1000); // 2 minutes
 }
 
 // Set filter
@@ -1267,93 +1166,35 @@ function attachClicks() {
 // Open movie modal
 async function openMovie(barcode) {
   currentMovie = movieMap[barcode] || { barcode };
-  
-  $('#modalTitle').textContent = currentMovie.title || 'Loading...';
+
+  $('#modalTitle').textContent = currentMovie.title || 'Unknown';
   const modalPoster = $('#modalPoster');
   modalPoster.src = currentMovie.cover || NO_COVER;
-  // Check for 1x1 pixel placeholders
   modalPoster.onload = function() {
     if (this.naturalWidth <= 2 && this.naturalHeight <= 2) {
       this.src = NO_COVER;
     }
   };
-  
+
   $('#modalRating').textContent = currentMovie.rating || 'NR';
   $('#modalBarcode').textContent = barcode;
   $('#modalCall').textContent = currentMovie.callNumber || '—';
   $('#modalLocation').textContent = currentMovie.location || 'DVD Section';
-  
-  // Show spinner while checking
+
   const spinner = $('#modalStatus .status-spinner');
   const statusText = $('#modalStatus .status-text');
-  spinner.style.display = 'inline-block';
-  statusText.textContent = 'Checking availability...';
-  $('#modalStatus').className = 'badge badge-status';
-  
-  // Hide both buttons initially while checking
-  $('#btnRequestNow').style.display = 'none';
-  $('#btnPlaceHold').style.display = 'block';
-  
+  spinner.style.display = 'none';
+
+  const status = currentMovie.status || (currentMovie.available ? 'In' : 'Out');
+  const isAvailable = currentMovie.available === true;
+
+  statusText.textContent = status;
+  $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
+
+  $('#btnRequestNow').style.display = 'block';
+  $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
+
   $('#movieModal').classList.add('visible');
-  
-  // Fetch fresh real-time availability
-  try {
-    const res = await fetch(`api/movies.php?barcode=${encodeURIComponent(barcode)}`);
-    const data = await res.json();
-    
-    console.log('Movie API response:', data);
-    console.log('Movie object:', data.movie);
-    console.log('Status:', data.movie?.status);
-    console.log('Available:', data.movie?.available);
-    console.log('Debug info:', data.movie?._debug);
-    
-    // Hide spinner
-    spinner.style.display = 'none';
-    
-    if (data.ok && data.movie) {
-      const m = data.movie;
-      if (m.cover) {
-        modalPoster.src = m.cover;
-        modalPoster.onload = function() {
-          if (this.naturalWidth <= 2 && this.naturalHeight <= 2) {
-            this.src = NO_COVER;
-          }
-        };
-      }
-      $('#modalCall').textContent = m.callNumber || '—';
-      $('#modalLocation').textContent = m.location || 'DVD Section';
-      
-      const status = m.status || 'Unknown';
-      // Use the 'available' boolean from API instead of parsing status string
-      const isAvailable = m.available === true;
-      
-      console.log('Final status:', status, 'isAvailable:', isAvailable);
-      
-      statusText.textContent = status;
-      $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
-      
-      // Show appropriate buttons based on availability
-      if (isAvailable) {
-        // Available: Show both Check Out Now and Place Hold
-        $('#btnRequestNow').style.display = 'block';
-        $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
-      } else {
-        // Not available: Get Now always visible, Place Hold for card users only
-        $('#btnRequestNow').style.display = 'block';
-        $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
-      }
-      
-      currentMovie = m;
-      currentMovie.available = isAvailable;
-    }
-  } catch (e) {
-    console.error('Failed to load movie details:', e);
-    // Hide spinner and show error
-    spinner.style.display = 'none';
-    statusText.textContent = 'Error checking status';
-    $('#btnRequestNow').style.display = 'block';
-    $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
-  }
 }
 
 function closeMovie() {

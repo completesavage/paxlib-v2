@@ -33,24 +33,34 @@ if (file_exists($cachePath)) {
     echo "Loaded " . count($cache) . " cached covers\n";
 }
 
-// Load CSV
-if (!file_exists($csvPath)) {
-    die("ERROR: dvds.csv not found\n");
-}
-
-$fh = fopen($csvPath, 'r');
+// Load movie list (recordset sync preferred, CSV fallback)
+$listPath = __DIR__ . '/data/movies_list.json';
 $barcodes = [];
 
-while (($row = fgetcsv($fh)) !== false) {
-    if (count($row) >= 3) {
-        $barcode = trim($row[2]);
-        $title = trim($row[1]);
-        if ($barcode && $title) {
-            $barcodes[$barcode] = $title;
+if (file_exists($listPath)) {
+    $movies = json_decode(file_get_contents($listPath), true) ?: [];
+    foreach ($movies as $m) {
+        if (!empty($m['barcode']) && !empty($m['title'])) {
+            $barcodes[$m['barcode']] = $m['title'];
         }
     }
+    echo "Loaded " . count($barcodes) . " movies from movies_list.json\n";
+} elseif (file_exists($csvPath)) {
+    $fh = fopen($csvPath, 'r');
+    while (($row = fgetcsv($fh)) !== false) {
+        if (count($row) >= 3) {
+            $barcode = trim($row[2]);
+            $title = trim($row[1]);
+            if ($barcode && $title) {
+                $barcodes[$barcode] = $title;
+            }
+        }
+    }
+    fclose($fh);
+    echo "Loaded " . count($barcodes) . " movies from dvds.csv\n";
+} else {
+    die("ERROR: movies_list.json and dvds.csv not found. Run sync-movies.php first.\n");
 }
-fclose($fh);
 
 echo "Found " . count($barcodes) . " DVDs to process\n\n";
 
