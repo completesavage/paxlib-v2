@@ -124,6 +124,49 @@ body {
   background: rgba(255,255,255,0.25);
 }
 
+/* Sort & rating filters (portrait kiosk — horizontal scroll) */
+.filter-panel {
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+}
+.filter-panel-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 20px 4px;
+}
+.filter-scroll {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.filter-scroll::-webkit-scrollbar { display: none; }
+.chip-btn {
+  flex-shrink: 0;
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 24px;
+  border: 2px solid #ddd;
+  background: white;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.chip-btn:active { transform: scale(0.97); }
+.chip-btn.active {
+  background: #2e7d32;
+  color: white;
+  border-color: #2e7d32;
+}
+.chip-btn.sort-chip { min-width: 88px; text-align: center; }
+
 /* Unavailable movie styling */
 .movie-card.unavailable {
   opacity: 0.6;
@@ -222,12 +265,12 @@ body.getnow-osk-open #getNowModal.visible {
 
 /* Main content */
 .main {
-  height: calc(100vh - 190px);
+  height: calc(100vh - 290px);
   overflow-y: auto;
   padding: 20px 0;
 }
 .main.osk-open {
-  height: calc(100vh - 190px - 310px);
+  height: calc(100vh - 290px - 310px);
 }
 .section { display: none; }
 .section.active { display: block; }
@@ -754,6 +797,25 @@ body.getnow-osk-open #getNowModal.visible {
   </button>
 </div>
 
+<div class="filter-panel">
+  <div class="filter-panel-label">Sort</div>
+  <div class="filter-scroll" id="sortFilters">
+    <button class="chip-btn sort-chip active" data-sort="az" onclick="setSort('az')">A → Z</button>
+    <button class="chip-btn sort-chip" data-sort="za" onclick="setSort('za')">Z → A</button>
+    <button class="chip-btn sort-chip" data-sort="rating" onclick="setSort('rating')">By Rating</button>
+    <button class="chip-btn sort-chip" data-sort="shelf" onclick="setSort('shelf')">By #</button>
+  </div>
+  <div class="filter-panel-label">Rating</div>
+  <div class="filter-scroll" id="ratingFilters">
+    <button class="chip-btn rating-chip active" data-rating="all" onclick="setRatingFilter('all')">All</button>
+    <button class="chip-btn rating-chip" data-rating="G" onclick="setRatingFilter('G')">G</button>
+    <button class="chip-btn rating-chip" data-rating="PG" onclick="setRatingFilter('PG')">PG</button>
+    <button class="chip-btn rating-chip" data-rating="PG-13" onclick="setRatingFilter('PG-13')">PG-13</button>
+    <button class="chip-btn rating-chip" data-rating="R" onclick="setRatingFilter('R')">R</button>
+    <button class="chip-btn rating-chip" data-rating="NR" onclick="setRatingFilter('NR')">NR</button>
+  </div>
+</div>
+
 <div class="search-bar" id="searchBar">
   <input type="text" class="search-input" id="searchInput" placeholder="Type a movie title...">
 </div>
@@ -980,6 +1042,8 @@ function hideLoading() {
 let movies = [];
 let movieMap = {};
 let currentFilter = 'all'; // 'all' or 'available'
+let currentSort = 'az'; // az, za, rating, shelf
+let currentRatingFilter = 'all';
 let movieSource = 'unknown';
 let lastSync = null;
 let currentUser = null;
@@ -1103,30 +1167,91 @@ async function loadMovies() {
   }
 }
 
-// Set filter
+// Set availability filter
 function setFilter(filter) {
   currentFilter = filter;
-  
-  // Update button states
   $('#filterAll').classList.toggle('active', filter === 'all');
   $('#filterAvailable').classList.toggle('active', filter === 'available');
-  
-  // Re-render all sections
+  applyFiltersAndRender();
+}
+
+function setSort(sort) {
+  currentSort = sort;
+  $$('.sort-chip').forEach(b => b.classList.toggle('active', b.dataset.sort === sort));
+  applyFiltersAndRender();
+}
+
+function setRatingFilter(rating) {
+  currentRatingFilter = rating;
+  $$('.rating-chip').forEach(b => b.classList.toggle('active', b.dataset.rating === rating));
+  applyFiltersAndRender();
+}
+
+function applyFiltersAndRender() {
   renderAll();
-  
-  // If on search, re-run search
   const searchInput = $('#searchInput');
-  if (searchInput.value.trim()) {
+  if (searchInput && searchInput.value.trim()) {
     doSearch(searchInput.value);
   }
 }
 
-// Get filtered movies based on current filter
-function getFilteredMovies(movieList = movies) {
-  if (currentFilter === 'available') {
-    return movieList.filter(m => m.available === true);
+function normalizeMovieRating(rating) {
+  const r = (rating || 'NR').toUpperCase().replace(/\s/g, '');
+  if (r === 'PG13') return 'PG-13';
+  if (r === 'NC17') return 'NC-17';
+  if (r === 'G' || r === 'PG' || r === 'PG-13' || r === 'R' || r === 'NC-17') return r === 'NC-17' ? 'R' : r;
+  return 'NR';
+}
+
+function getShelfNumber(m) {
+  if (m.shelfNumber) return String(m.shelfNumber);
+  if (!m.callNumber) return '';
+  const parts = m.callNumber.trim().split(/\s+/);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (/^\d{1,4}$/.test(parts[i])) return parts[i];
   }
-  return movieList;
+  return '';
+}
+
+const RATING_SORT_ORDER = { 'G': 1, 'PG': 2, 'PG-13': 3, 'R': 4, 'NC-17': 5, 'NR': 6 };
+
+function sortMovieList(list) {
+  const sorted = [...list];
+  if (currentSort === 'az') {
+    sorted.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
+  } else if (currentSort === 'za') {
+    sorted.sort((a, b) => (b.title || '').localeCompare(a.title || '', undefined, { sensitivity: 'base' }));
+  } else if (currentSort === 'rating') {
+    sorted.sort((a, b) => {
+      const ra = RATING_SORT_ORDER[normalizeMovieRating(a.rating)] || 99;
+      const rb = RATING_SORT_ORDER[normalizeMovieRating(b.rating)] || 99;
+      if (ra !== rb) return ra - rb;
+      return (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+    });
+  } else if (currentSort === 'shelf') {
+    sorted.sort((a, b) => {
+      const sa = parseInt(getShelfNumber(a), 10) || 99999;
+      const sb = parseInt(getShelfNumber(b), 10) || 99999;
+      if (sa !== sb) return sa - sb;
+      return (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+    });
+  }
+  return sorted;
+}
+
+// Get filtered + sorted movies
+function getFilteredMovies(movieList = movies) {
+  let list = movieList;
+
+  if (currentFilter === 'available') {
+    list = list.filter(m => m.available === true);
+  }
+
+  if (currentRatingFilter !== 'all') {
+    list = list.filter(m => normalizeMovieRating(m.rating) === currentRatingFilter);
+  }
+
+  return sortMovieList(list);
 }
 
 // Update filter counts
@@ -1787,7 +1912,8 @@ async function requestMovie(type) {
     const reqData = {
       movie: {
         barcode: currentMovie.barcode,
-        dvdId: currentMovie.dvdId ?? null,
+        dvdId: getShelfNumber(currentMovie) || currentMovie.dvdId || null,
+        shelfNumber: getShelfNumber(currentMovie) || null,
         title: currentMovie.title,
         callNumber: currentMovie.callNumber,
         cover: currentMovie.cover,
