@@ -4,11 +4,8 @@
  * GET  - Returns current sync status / last sync info
  * POST - Triggers a full sync from the recordset API
  *
- * Recordset: /recordsets/473530/records
- * Replaces dvds.csv as the source of truth for the movie list.
- *
- * Output: data/movies_cache.json  (array of movie objects keyed by barcode)
- *         data/movies_list.json   (flat array sorted A-Z, for list.php / movies.php)
+ * Output: data/movies_list.json
+ *         data/sync_meta.json
  */
 
 set_time_limit(120);
@@ -19,38 +16,44 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    exit(0);
+}
+
+if (file_exists(__DIR__ . '/../config.php')) {
+    require_once __DIR__ . '/../config.php';
+}
 
 require_once __DIR__ . '/polaris.php';
+require_once __DIR__ . '/movie_helpers.php';
 
-$dataDir      = __DIR__ . '/../data';
-$cacheFile    = "$dataDir/movies_cache.json";  // barcode-keyed map used by continuous checker
-$listFile     = "$dataDir/movies_list.json";   // flat sorted array used by movies.php
+$dataDir = __DIR__ . '/../data';
+$listFile = "$dataDir/movies_list.json";
 $syncMetaFile = "$dataDir/sync_meta.json";
-$lockFile     = "$dataDir/sync.lock";
+$lockFile = "$dataDir/sync.lock";
+$recordSetId = defined('DVD_RECORDSET_ID') ? DVD_RECORDSET_ID : 473530;
 
-if (!is_dir($dataDir)) mkdir($dataDir, 0755, true);
+if (!is_dir($dataDir)) {
+    mkdir($dataDir, 0755, true);
+}
 
-// ── GET: status ───────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $meta = file_exists($syncMetaFile) ? json_decode(file_get_contents($syncMetaFile), true) : null;
     $running = file_exists($lockFile) && (time() - filemtime($lockFile)) < 120;
     echo json_encode([
-        'ok'      => true,
+        'ok' => true,
         'running' => $running,
-        'meta'    => $meta,
+        'meta' => $meta,
     ]);
     exit;
 }
 
-// ── POST: run sync ────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['ok' => false, 'error' => 'Method not allowed']);
     exit;
 }
 
-// Prevent concurrent syncs
 if (file_exists($lockFile) && (time() - filemtime($lockFile)) < 120) {
     echo json_encode(['ok' => false, 'error' => 'Sync already in progress']);
     exit;
@@ -59,211 +62,157 @@ file_put_contents($lockFile, time());
 
 try {
     $api = PolarisAPI::getInstance();
-
-    // ── 1. Figure out total count first (numRecords=0 gives ObjectTypeID + empty Records)
-    error_log("sync-movies: fetching record count");
-    $countResult = $api->apiRequest('GET',
-        'polaris/699/3073/recordsets/473530/records?startIndex=0&numRecords=0');
-
-    if (!$countResult['ok']) {
-        throw new Exception('Failed to contact recordset API: ' . ($countResult['error'] ?? 'unknown'));
-    }
-
-    // The API always returns all matching records when numRecords=0 gives count=0,
-    // so we page in batches of 100.
-    $pageSize  = 100;
-    $startIndex = 0;
     $allRecords = [];
-    $maxPages   = 100; // safety cap (10,000 items)
 
-    // ── 2. Page through all records ───────────────────────────────────────────
-    do {
-        error_log("sync-movies: fetching startIndex=$startIndex");
-        $result = $api->apiRequest('GET',
-            "polaris/699/3073/recordsets/473530/records?startIndex={$startIndex}&numRecords={$pageSize}");
+    // Try full fetch first (numRecords=0 returns entire record set)
+    error_log("sync-movies: fetching recordset $recordSetId (full list)");
+    $fullResult = $api->getRecordSetContents($recordSetId, 0, 0);
 
-        if (!$result['ok'] || !isset($result['data'])) {
-            throw new Exception("Page fetch failed at startIndex=$startIndex");
-        }
+    if (!$fullResult['ok']) {
+        throw new Exception('Failed to contact recordset API: ' . ($fullResult['error'] ?? 'unknown'));
+    }
 
-        $records = $result['data']['Records'] ?? [];
-        if (empty($records)) break; // no more data
+    $allRecords = $fullResult['data']['Records'] ?? [];
 
-        $allRecords = array_merge($allRecords, $records);
-        $startIndex += $pageSize;
-        $maxPages--;
+    // Fall back to paging if the full fetch returned nothing
+    if (empty($allRecords)) {
+        $pageSize = 100;
+        $startIndex = 0;
+        $maxPages = 100;
 
-        // Small pause to be polite to the API
-        if (!empty($records) && count($records) === $pageSize) usleep(200000);
+        do {
+            error_log("sync-movies: fetching startIndex=$startIndex");
+            $result = $api->getRecordSetContents($recordSetId, $startIndex, $pageSize);
 
-    } while (count($records) === $pageSize && $maxPages > 0);
+            if (!$result['ok'] || !isset($result['data'])) {
+                throw new Exception("Page fetch failed at startIndex=$startIndex");
+            }
 
-    error_log("sync-movies: fetched " . count($allRecords) . " total records");
+            $records = $result['data']['Records'] ?? [];
+            if (empty($records)) {
+                break;
+            }
 
-    // ── 3. Load existing cache so we can preserve cover URLs, overrides, etc.
-    $existingCache = [];
-    if (file_exists($cacheFile)) {
-        $raw = json_decode(file_get_contents($cacheFile), true);
-        // movies_cache.json may be the availability cache (has 'statuses' key)
-        // or the movie-data cache (flat barcode => movie map)
-        // We want the movie-data version, which movies.php also writes.
-        if (isset($raw['statuses'])) {
-            // That's the availability cache, not movie data
-            $existingCache = [];
-        } else {
-            $existingCache = $raw ?: [];
+            $allRecords = array_merge($allRecords, $records);
+            $startIndex += $pageSize;
+            $maxPages--;
+
+            if (count($records) === $pageSize) {
+                usleep(200000);
+            }
+        } while (count($records) === $pageSize && $maxPages > 0);
+    }
+
+    error_log('sync-movies: fetched ' . count($allRecords) . ' total records');
+
+    $existingByBarcode = [];
+    if (file_exists($listFile)) {
+        $raw = json_decode(file_get_contents($listFile), true) ?: [];
+        foreach ($raw as $movie) {
+            if (!empty($movie['barcode'])) {
+                $existingByBarcode[$movie['barcode']] = $movie;
+            }
         }
     }
 
-    // Also load overrides
     $overridesFile = "$dataDir/movies_overrides.json";
     $overrides = file_exists($overridesFile)
         ? (json_decode(file_get_contents($overridesFile), true) ?: [])
         : [];
 
-    // Load cover cache
-    $coversFile = __DIR__ . '/../data/covers_cache.json';
+    $coversFile = "$dataDir/covers_cache.json";
     $coverCache = file_exists($coversFile)
         ? (json_decode(file_get_contents($coversFile), true) ?: [])
         : [];
 
-    // ── 4. Build movie objects ─────────────────────────────────────────────────
-    $movieMap  = [];   // barcode => movie (for movies_cache.json)
-    $movieList = [];   // flat array for movies_list.json
+    $movieList = [];
+    $dvdCounter = 1;
 
-    $dvdCounter = 1;   // sequential #, replaces CSV column 0
-    // Sort by barcode to keep numbering stable across syncs
     usort($allRecords, fn($a, $b) => strcmp($a['Barcode'] ?? '', $b['Barcode'] ?? ''));
 
     foreach ($allRecords as $rec) {
         $barcode = trim($rec['Barcode'] ?? '');
-        if (empty($barcode)) continue;
-
-        // Skip non-DVD material types
-        $matType = strtolower($rec['MaterialType'] ?? '');
-        if ($matType && strpos($matType, 'dvd') === false) continue;
-
-        // Clean title — strip " [videorecording]" suffix
-        $rawTitle = $rec['Title'] ?? 'Unknown';
-        $title    = preg_replace('/\s*\[videorecording\]\s*/i', '', $rawTitle);
-        $title    = preg_replace('/\s*:\s*[a-z].*$/i', '', $title); // strip sub-titles if desired (optional)
-        $title    = trim($title, " \t\n\r\0\x0B/:-");
-
-        // Rating from CallNumber: "PG13 DVD 86" → "PG-13"
-        $callNumber = trim($rec['CallNumber'] ?? '');
-        $rating     = extractRatingFromCallNumber($callNumber);
-
-        // bibRecordId — Polaris uses RecordID as the item record ID.
-        // For hold placement we need the BibRecordID; we'll store RecordID and
-        // look it up lazily (existing code in movies.php already handles this).
-        $itemRecordId = (int)($rec['RecordID'] ?? 0);
-
-        // Preserve data from existing cache
-        $existing = $existingCache[$barcode] ?? [];
-
-        // Cover URL: existing override > covers_cache > no-cover
-        $cover = $overrides[$barcode]['cover']
-              ?? $existing['cover']
-              ?? $coverCache[$barcode]
-              ?? null;
-
-        // bibRecordId may have been discovered and cached previously
-        $bibRecordId = $overrides[$barcode]['bibRecordId']
-                    ?? $existing['bibRecordId']
-                    ?? null;
-
-        $movie = [
-            'dvdId'        => (string)$dvdCounter,
-            'id'           => (string)$dvdCounter,
-            'title'        => $title,
-            'barcode'      => $barcode,
-            'rating'       => $rating,
-            'callNumber'   => $callNumber,
-            'itemRecordId' => $itemRecordId,
-            'bibRecordId'  => $bibRecordId,
-            'cover'        => $cover,
-            'location'     => 'DVD Section',
-            'status'       => $rec['Status'] ?? null,
-            'itemStatusId' => (int)($rec['ItemStatusID'] ?? 0),
-            'lastActivity' => $rec['LastActivityDate'] ?? null,
-            'sortTitle'    => $rec['SortTitle'] ?? '',
-        ];
-
-        // Merge any overrides on top
-        if (isset($overrides[$barcode])) {
-            $movie = array_merge($movie, $overrides[$barcode]);
-            $movie['barcode'] = $barcode; // never let override stomp the barcode
+        if ($barcode === '') {
+            continue;
         }
 
-        $movieMap[$barcode]  = $movie;
-        $movieList[]         = $movie;
+        $matType = strtolower($rec['MaterialType'] ?? '');
+        if ($matType && strpos($matType, 'dvd') === false) {
+            continue;
+        }
+
+        $rawTitle = $rec['Title'] ?? 'Unknown';
+        $title = preg_replace('/\s*\[videorecording\]\s*/i', '', $rawTitle);
+        $title = trim($title, " \t\n\r\0\x0B/:-");
+
+        $callNumber = trim($rec['CallNumber'] ?? '');
+        $rating = extractRatingFromCallNumber($callNumber);
+        $status = $rec['Status'] ?? null;
+        $existing = $existingByBarcode[$barcode] ?? [];
+
+        $cover = $overrides[$barcode]['cover']
+            ?? $existing['cover']
+            ?? $coverCache[$barcode]
+            ?? null;
+
+        $bibRecordId = $overrides[$barcode]['bibRecordId']
+            ?? $existing['bibRecordId']
+            ?? null;
+
+        $movie = enrichMovieAvailability([
+            'dvdId' => (string)$dvdCounter,
+            'id' => (string)$dvdCounter,
+            'title' => $title,
+            'barcode' => $barcode,
+            'rating' => $rating,
+            'callNumber' => $callNumber,
+            'itemRecordId' => (int)($rec['RecordID'] ?? 0),
+            'bibRecordId' => $bibRecordId,
+            'cover' => $cover,
+            'location' => 'DVD Section',
+            'status' => $status,
+            'itemStatusId' => (int)($rec['ItemStatusID'] ?? 0),
+            'lastActivity' => $rec['LastActivityDate'] ?? null,
+            'sortTitle' => $rec['SortTitle'] ?? '',
+        ]);
+
+        if (isset($overrides[$barcode])) {
+            $movie = array_merge($movie, $overrides[$barcode]);
+            $movie['barcode'] = $barcode;
+            $movie = enrichMovieAvailability($movie);
+        }
+
+        $movieList[] = $movie;
         $dvdCounter++;
     }
 
-    // Sort list A-Z by title
     usort($movieList, fn($a, $b) => strcasecmp($a['title'], $b['title']));
 
-    // ── 5. Write output files ──────────────────────────────────────────────────
-    // movies_list.json: flat sorted array (what movies.php returns for listing)
     file_put_contents($listFile, json_encode($movieList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
-    // movies_cache.json: flat array of movie objects (used by continuous-availability.php)
-    // Note: continuous-availability.php uses this as an array (not keyed by barcode)
-    file_put_contents($cacheFile, json_encode($movieList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-
-    // Sync metadata
     $meta = [
-        'lastSync'  => date('c'),
-        'count'     => count($movieList),
-        'source'    => 'recordset/473530',
+        'lastSync' => date('c'),
+        'count' => count($movieList),
+        'source' => "recordset/{$recordSetId}",
     ];
     file_put_contents($syncMetaFile, json_encode($meta, JSON_PRETTY_PRINT));
 
-    // Remove lock
-    if (file_exists($lockFile)) unlink($lockFile);
-
-    error_log("sync-movies: done — " . count($movieList) . " movies written");
-
-    echo json_encode([
-        'ok'    => true,
-        'count' => count($movieList),
-        'meta'  => $meta,
-    ]);
-
-} catch (Exception $e) {
-    if (file_exists($lockFile)) unlink($lockFile);
-    error_log("sync-movies exception: " . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-/**
- * Extract MPAA rating from Polaris CallNumber string.
- * Examples: "PG13 DVD 86" → "PG-13"
- *           "NR DVD 90"   → "NR"
- *           "G DVD 7"     → "G"
- *           "R DVD 44"    → "R"
- */
-function extractRatingFromCallNumber($callNumber) {
-    $cn = strtoupper(trim($callNumber));
-
-    // Try common patterns at start of call number
-    $patterns = [
-        '/^(PG-13)\b/'  => 'PG-13',
-        '/^(PG13)\b/'   => 'PG-13',
-        '/^(NC-17)\b/'  => 'NC-17',
-        '/^(NC17)\b/'   => 'NC-17',
-        '/^(PG)\b/'     => 'PG',
-        '/^(NR)\b/'     => 'NR',
-        '/^(R)\b/'      => 'R',
-        '/^(G)\b/'      => 'G',
-    ];
-
-    foreach ($patterns as $pattern => $rating) {
-        if (preg_match($pattern, $cn)) return $rating;
+    if (file_exists($lockFile)) {
+        unlink($lockFile);
     }
 
-    return 'NR'; // default
+    error_log('sync-movies: done — ' . count($movieList) . ' movies written');
+
+    echo json_encode([
+        'ok' => true,
+        'count' => count($movieList),
+        'meta' => $meta,
+    ]);
+} catch (Exception $e) {
+    if (file_exists($lockFile)) {
+        unlink($lockFile);
+    }
+    error_log('sync-movies exception: ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
 }

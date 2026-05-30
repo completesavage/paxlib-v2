@@ -3,7 +3,7 @@
  * Polaris API Helper
  * Handles authentication, patron lookup, item lookup, and hold placement
  */
-define('DVD_RECORDSET_ID', 473530);
+
 require_once __DIR__ . '/../config.php';
 
 class PolarisAPI {
@@ -115,6 +115,15 @@ class PolarisAPI {
      */
     public function getItemByBarcode($barcode) {
         $path = "polaris/{$this->orgId}/{$this->workstationId}/itemrecords/{$barcode}/?isBarcode=true";
+        return $this->apiRequest('GET', $path);
+    }
+
+    /**
+     * Get records from a Polaris record set
+     */
+    public function getRecordSetContents($recordSetId, $startIndex = 0, $numRecords = 0) {
+        $path = "polaris/{$this->orgId}/{$this->workstationId}/recordsets/{$recordSetId}/records"
+              . "?startIndex={$startIndex}&numRecords={$numRecords}";
         return $this->apiRequest('GET', $path);
     }
     
@@ -288,11 +297,6 @@ class PolarisAPI {
     /**
      * Determine if a circulation status means the item is available
      */
-    public function getRecordSetContents($recordSetId, $startIndex = 0, $numRecords = 0) {
-    $path = "polaris/{$this->orgId}/{$this->workstationId}/recordsets/{$recordSetId}/records"
-          . "?startIndex={$startIndex}&numRecords={$numRecords}";
-    return $this->apiRequest('GET', $path);
-    }
     private function isStatusAvailable($status) {
         $status = strtolower($status);
         

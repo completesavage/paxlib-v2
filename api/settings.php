@@ -51,6 +51,13 @@ if ($method === 'POST') {
         exit;
     }
     
+    // Handle special actions before merge
+    if (!empty($input['_clearOverrides'])) {
+        $overridesFile = __DIR__ . '/../data/movies_overrides.json';
+        file_put_contents($overridesFile, json_encode(new stdClass(), JSON_PRETTY_PRINT));
+        unset($input['_clearOverrides']);
+    }
+
     // Merge with existing settings
     $current = loadSettings();
     $merged = array_merge($current, $input);

@@ -1,17 +1,18 @@
 <?php
 /**
  * Movies API
- * 
- * GET              - List all movies (from cache)
- * GET ?barcode=X   - Get single movie with availability from cache
- * POST             - Update/override movie data (staff)
- * PUT ?action=X    - Cache operations (rebuild, etc.)
+ *
+ * GET              - List all movies (from Polaris recordset sync, or CSV fallback)
+ * GET ?barcode=X   - Get single movie with availability from synced data
+ * POST             - Save staff override for a movie
+ * PUT ?action=refresh&barcode=X - Refresh cover (and bib ID) from Polaris item record
  */
 
-// Load config first!
 if (file_exists(__DIR__ . '/../config.php')) {
     require_once __DIR__ . '/../config.php';
 }
+
+require_once __DIR__ . '/movie_helpers.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -22,227 +23,273 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-// Only load polaris.php for operations that need it
-$polarisLoaded = false;
-function loadPolaris() {
-    global $polarisLoaded;
-    if (!$polarisLoaded && file_exists(__DIR__ . '/polaris.php')) {
-        include_once __DIR__ . '/polaris.php';
-        $polarisLoaded = class_exists('PolarisAPI');
-    }
-    return $polarisLoaded;
-}
-
 $dataDir = __DIR__ . '/../data';
-$cacheFile = "$dataDir/movies_cache.json";
+$listFile = "$dataDir/movies_list.json";
+$syncMetaFile = "$dataDir/sync_meta.json";
 $overridesFile = "$dataDir/movies_overrides.json";
+$coversFile = "$dataDir/covers_cache.json";
 $csvFile = __DIR__ . '/../dvds.csv';
 
-// Ensure data directory exists
 if (!is_dir($dataDir)) {
     mkdir($dataDir, 0755, true);
 }
 
-function loadCache() {
-    global $cacheFile;
-    if (!file_exists($cacheFile)) return [];
-    $data = json_decode(file_get_contents($cacheFile), true);
-    return $data ?: [];
-}
-
-function saveCache($cache) {
-    global $cacheFile;
-    file_put_contents($cacheFile, json_encode($cache, JSON_PRETTY_PRINT));
-}
-
 function loadOverrides() {
     global $overridesFile;
-    if (!file_exists($overridesFile)) return [];
+    if (!file_exists($overridesFile)) {
+        return [];
+    }
     $data = json_decode(file_get_contents($overridesFile), true);
     return $data ?: [];
 }
 
-function saveOverrides($overrides) {
+function saveOverrides(array $overrides) {
     global $overridesFile;
-    file_put_contents($overridesFile, json_encode($overrides, JSON_PRETTY_PRINT));
+    file_put_contents($overridesFile, json_encode($overrides, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
 
 function loadFromCSV() {
     global $csvFile;
     $movies = [];
-    
-    if (!file_exists($csvFile)) return $movies;
-    
+
+    if (!file_exists($csvFile)) {
+        return $movies;
+    }
+
     $handle = fopen($csvFile, 'r');
-    if (!$handle) return $movies;
-    
+    if (!$handle) {
+        return $movies;
+    }
+
     while (($row = fgetcsv($handle)) !== false) {
-        if (count($row) < 3) continue;
-        
+        if (count($row) < 3) {
+            continue;
+        }
+
         $id = trim($row[0]);
         $title = trim($row[1]);
         $barcode = trim($row[2]);
         $rating = isset($row[3]) ? trim($row[3]) : '';
-        
-        if (empty($barcode) || empty($title)) continue;
-        
-        $movies[$barcode] = [
-            'id' => $id,
-            'title' => $title,
+
+        if (empty($barcode) || empty($title)) {
+            continue;
+        }
+
+        $movies[] = enrichMovieAvailability([
             'barcode' => $barcode,
-            'rating' => $rating
-        ];
+            'dvdId' => $id,
+            'title' => $title,
+            'rating' => normalizeRating($rating),
+            'cover' => null,
+            'callNumber' => null,
+            'bibRecordId' => null,
+            'location' => 'DVD Section',
+            'status' => null,
+        ]);
     }
-    
+
     fclose($handle);
+
+    usort($movies, fn($a, $b) => strcasecmp($a['title'], $b['title']));
     return $movies;
 }
 
-function normalizeRating($rating) {
-    $rating = strtoupper(trim($rating ?? ''));
-    $map = [
-        'PG13' => 'PG-13',
-        'PG 13' => 'PG-13',
-        'NC17' => 'NC-17',
-        'NC 17' => 'NC-17',
-        'NOT RATED' => 'NR',
-        'UNRATED' => 'NR',
-        '' => 'NR'
-    ];
-    return $map[$rating] ?? $rating;
+function loadSyncMeta() {
+    global $syncMetaFile;
+    if (!file_exists($syncMetaFile)) {
+        return null;
+    }
+    return json_decode(file_get_contents($syncMetaFile), true) ?: null;
 }
 
 function getMergedMovies() {
-    $csvMovies = loadFromCSV();
-    $cache = loadCache();
+    global $listFile;
     $overrides = loadOverrides();
-    
-    $movies = [];
-    
-    foreach ($csvMovies as $barcode => $csvData) {
-        $movie = [
-            'barcode' => $barcode,
-            'dvdId' => $csvData['id'] ?? null,
-            'title' => $csvData['title'] ?? 'Unknown',
-            'rating' => normalizeRating($csvData['rating'] ?? ''),
-            'cover' => null,
-            'callNumber' => null,
-            'description' => null,
-            'bibRecordId' => null,
-            'upc' => null,
-            'oclc' => null,
-            'location' => 'DVD Section'
-        ];
-        
-        if (isset($cache[$barcode])) {
-            $movie = array_merge($movie, $cache[$barcode]);
+    $source = 'csv';
+    $meta = loadSyncMeta();
+
+    if (file_exists($listFile)) {
+        $raw = json_decode(file_get_contents($listFile), true);
+        $movies = is_array($raw) ? $raw : [];
+        $source = 'recordset';
+    } else {
+        $movies = loadFromCSV();
+    }
+
+    $merged = [];
+    foreach ($movies as $movie) {
+        if (empty($movie['barcode'])) {
+            continue;
         }
-        
+
+        $barcode = $movie['barcode'];
         if (isset($overrides[$barcode])) {
             $movie = array_merge($movie, $overrides[$barcode]);
+            $movie['barcode'] = $barcode;
         }
-        
-        $movies[] = $movie;
+
+        $merged[] = enrichMovieAvailability($movie);
     }
-    
-    usort($movies, function($a, $b) {
-        return strcasecmp($a['title'], $b['title']);
-    });
-    
-    return $movies;
+
+    usort($merged, fn($a, $b) => strcasecmp($a['title'], $b['title']));
+
+    return [
+        'movies' => $merged,
+        'source' => $source,
+        'meta' => $meta,
+    ];
+}
+
+function buildListResponse(array $payload) {
+    return [
+        'ok' => true,
+        'count' => count($payload['movies']),
+        'source' => $payload['source'],
+        'lastSync' => $payload['meta']['lastSync'] ?? null,
+        'recordsetId' => $payload['meta']['source'] ?? null,
+        'items' => $payload['movies'],
+    ];
+}
+
+function loadPolaris() {
+    static $loaded = false;
+    if (!$loaded && file_exists(__DIR__ . '/polaris.php')) {
+        require_once __DIR__ . '/polaris.php';
+        $loaded = class_exists('PolarisAPI');
+    }
+    return $loaded;
+}
+
+function refreshMovieFromPolaris($barcode) {
+    global $coversFile, $overridesFile;
+
+    if (!loadPolaris()) {
+        return ['ok' => false, 'error' => 'Polaris not available'];
+    }
+
+    $api = PolarisAPI::getInstance();
+    $result = $api->getItemByBarcode($barcode);
+
+    if (!$result['ok'] || empty($result['data'])) {
+        return ['ok' => false, 'error' => 'Item not found in Polaris'];
+    }
+
+    $item = $result['data'];
+    $bib = $item['BibInfo'] ?? [];
+    $cover = null;
+
+    if (!empty($bib['UPCNumber'])) {
+        $cover = $api->buildCoverUrl($bib['UPCNumber']);
+    }
+    if (!$cover && !empty($bib['OCLCNumber'])) {
+        $cover = $api->buildCoverUrl(null, $bib['OCLCNumber']);
+    }
+    if (!$cover && !empty($bib['ISBN'])) {
+        $cover = $api->buildCoverUrl(null, null, $bib['ISBN']);
+    }
+
+    $noCover = defined('NO_COVER_PATH') ? NO_COVER_PATH : '/img/no-cover.svg';
+    if (!$cover) {
+        $cover = $noCover;
+    }
+
+    $covers = file_exists($coversFile)
+        ? (json_decode(file_get_contents($coversFile), true) ?: [])
+        : [];
+    $covers[$barcode] = $cover;
+    file_put_contents($coversFile, json_encode($covers, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    $overrides = loadOverrides();
+    if (!isset($overrides[$barcode])) {
+        $overrides[$barcode] = [];
+    }
+    $overrides[$barcode]['cover'] = $cover;
+    if (!empty($item['AssociatedBibRecordID'])) {
+        $overrides[$barcode]['bibRecordId'] = (int)$item['AssociatedBibRecordID'];
+    }
+    saveOverrides($overrides);
+
+    return [
+        'ok' => true,
+        'barcode' => $barcode,
+        'cover' => $cover,
+        'bibRecordId' => $overrides[$barcode]['bibRecordId'] ?? null,
+    ];
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-// GET - List movies or single movie
 if ($method === 'GET') {
     $barcode = isset($_GET['barcode']) ? trim($_GET['barcode']) : null;
-    
+    $payload = getMergedMovies();
+
     if ($barcode) {
-        // Single movie - get from merged data
-        $movies = getMergedMovies();
         $movie = null;
-        foreach ($movies as $m) {
+        foreach ($payload['movies'] as $m) {
             if ($m['barcode'] === $barcode) {
                 $movie = $m;
                 break;
             }
         }
-        
+
         if (!$movie) {
             http_response_code(404);
             echo json_encode(['ok' => false, 'error' => 'Movie not found']);
             exit;
         }
-        
-        // ALWAYS check real-time availability from Polaris when movie is clicked
-        $movie['status'] = 'Checking...';
-        $movie['available'] = false;
-        $debug = [];
-        
-        // Check if config.php is loaded
-        global $username, $password;
-        $debug['configCheck'] = [
-            'username_isset' => isset($username),
-            'password_isset' => isset($password),
-            'username_empty' => empty($username),
-            'password_empty' => empty($password)
-        ];
-        
-        if (loadPolaris() && isset($movie['bibRecordId']) && $movie['bibRecordId']) {
-            try {
-                // Use singleton to reuse authenticated instance
-                $api = PolarisAPI::getInstance();
-                
-                $debug['barcode'] = $barcode;
-                $debug['bibRecordId'] = $movie['bibRecordId'];
-                
-                // Use simple bib availability method
-                $result = $api->getBibAvailability($movie['bibRecordId']);
-                
-                $debug['bibAvailResult'] = $result;
-                
-                if ($result['ok']) {
-                    $movie['status'] = $result['status'];
-                    $movie['available'] = $result['available'];
-                    $movie['availableCount'] = $result['availableCount'];
-                    $movie['totalCount'] = $result['totalCount'];
-                } else {
-                    $movie['status'] = 'API Error';
-                    $debug['error'] = $result['error'];
-                }
-            } catch (Exception $e) {
-                $movie['status'] = 'Exception: ' . $e->getMessage();
-                $debug['exception'] = $e->getMessage();
-            }
-        } else {
-            if (!loadPolaris()) {
-                $movie['status'] = 'Polaris class not loaded';
-            } elseif (!isset($movie['bibRecordId'])) {
-                $movie['status'] = 'No bibRecordId';
-            } else {
-                $movie['status'] = 'Unknown issue';
-            }
-            $debug['polarisLoaded'] = loadPolaris();
-            $debug['hasBibId'] = isset($movie['bibRecordId']);
-        }
-        
-        $movie['_debug'] = $debug;
-        
-        echo json_encode(['ok' => true, 'movie' => $movie]);
+
+        echo json_encode([
+            'ok' => true,
+            'source' => $payload['source'],
+            'lastSync' => $payload['meta']['lastSync'] ?? null,
+            'movie' => $movie,
+        ]);
         exit;
     }
-    
-    // List all movies
-    $movies = getMergedMovies();
-    echo json_encode([
-        'ok' => true,
-        'count' => count($movies),
-        'items' => $movies
-    ]);
+
+    echo json_encode(buildListResponse($payload));
     exit;
 }
 
-// POST and PUT handlers from original file...
+if ($method === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!$input || empty($input['barcode'])) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Missing barcode']);
+        exit;
+    }
+
+    $barcode = trim($input['barcode']);
+    $overrides = loadOverrides();
+    if (!isset($overrides[$barcode])) {
+        $overrides[$barcode] = [];
+    }
+
+    foreach (['title', 'rating', 'callNumber', 'location', 'description', 'cover'] as $field) {
+        if (array_key_exists($field, $input)) {
+            $overrides[$barcode][$field] = $input[$field];
+        }
+    }
+
+    saveOverrides($overrides);
+
+    echo json_encode(['ok' => true, 'barcode' => $barcode]);
+    exit;
+}
+
+if ($method === 'PUT') {
+    $action = $_GET['action'] ?? '';
+    $barcode = isset($_GET['barcode']) ? trim($_GET['barcode']) : '';
+
+    if ($action === 'refresh' && $barcode !== '') {
+        echo json_encode(refreshMovieFromPolaris($barcode));
+        exit;
+    }
+
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'Unknown action']);
+    exit;
+}
+
 http_response_code(405);
 echo json_encode(['ok' => false, 'error' => 'Method not allowed']);

@@ -33,5 +33,5 @@ echo json_encode([
     'ok' => true,
     'message' => 'Cache reset successfully',
     'deleted' => $deleted,
-    'instruction' => 'Reload the kiosk page to start fresh availability checking'
+    'instruction' => 'Legacy availability cache cleared. The kiosk uses recordset sync for In/Out status.'
 ]);
