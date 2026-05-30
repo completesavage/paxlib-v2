@@ -989,12 +989,10 @@ let warnInterval = null;
 
 // Initialize
 async function init() {
-  await loadMovies();
-  await loadStatuses(); // Load initial cache
+  await loadMovies();  // items already have .available and .status
   renderAll();
   setupEvents();
-  startAutoRefresh(); // Refresh cache from disk every 2 minutes
-  startContinuousCheck(); // Start continuous background checking (never stops)
+  // Optional: re-sync from Polaris every 10–15 min if you want fresher availability
 }
 
 // Load from cached movies API
@@ -1004,6 +1002,12 @@ async function loadMovies() {
     const data = await res.json();
     if (data.ok) {
       movies = data.items || [];
+      movies.forEach(m => {
+        // available should already be set by movies.php from record set Status
+        if (m.available === undefined) {
+          m.available = (m.status || '').toLowerCase() === 'in';
+        }
+      });
       movieMap = Object.fromEntries(movies.map(m => [m.barcode, m]));
       console.log(`Loaded ${movies.length} movies`);
       updateFilterCounts();
