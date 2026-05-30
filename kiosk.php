@@ -987,13 +987,95 @@ let patronStatus = null; // Stores fines, checkout counts, blocking info
 let currentMovie = null;
 let idleTimer = null;
 let warnInterval = null;
+let kioskSettings = {};
 
 // Initialize — Paxlib Kiosk v3 (recordset; no availability polling)
 async function init() {
   console.log('%c Paxlib Kiosk v3 — recordset mode ', 'background:#2e7d32;color:#fff;font-weight:bold;padding:2px 8px;border-radius:4px');
+  await loadKioskSettings();
   await loadMovies();
   renderAll();
   setupEvents();
+  maybeAutoSyncMovies();
+  startCoverSyncIfNeeded();
+}
+
+async function loadKioskSettings() {
+  try {
+    const res = await fetch('api/settings.php');
+    const data = await res.json();
+    if (data.ok) kioskSettings = data.settings || {};
+  } catch (e) {
+    console.warn('Could not load kiosk settings', e);
+  }
+}
+
+// Re-sync movie list + availability from Polaris recordset when stale
+async function maybeAutoSyncMovies() {
+  if (kioskSettings.autoSyncMovies === false) return;
+
+  const intervalMin = parseInt(kioskSettings.syncIntervalMinutes, 10) || 15;
+  try {
+    const res = await fetch('api/sync-movies.php');
+    const data = await res.json();
+    if (!data.ok || data.running) return;
+
+    const lastSync = data.meta?.lastSync ? new Date(data.meta.lastSync).getTime() : 0;
+    const ageMs = lastSync ? (Date.now() - lastSync) : Infinity;
+
+    if (ageMs < intervalMin * 60 * 1000) {
+      console.log(`Recordset sync is fresh (${Math.round(ageMs / 60000)}m old)`);
+      return;
+    }
+
+    console.log('Auto-syncing movies from Polaris recordset…');
+    const syncRes = await fetch('api/sync-movies.php', { method: 'POST' });
+    const syncData = await syncRes.json();
+    if (syncData.ok) {
+      console.log(`Auto-sync complete: ${syncData.count} movies`);
+      await loadMovies();
+      renderAll();
+      startCoverSyncIfNeeded();
+    } else {
+      console.warn('Auto-sync failed:', syncData.error);
+    }
+  } catch (e) {
+    console.warn('Auto-sync skipped:', e);
+  }
+}
+
+// Fetch missing covers in the background (Syndetics via Polaris item lookup)
+async function startCoverSyncIfNeeded() {
+  const missing = movies.filter(m => !m.cover || m.cover.includes('no-cover')).length;
+  if (missing === 0) return;
+
+  console.log(`Fetching covers in background (${missing} missing)…`);
+
+  (async function runCoverSync() {
+    while (true) {
+      try {
+        const res = await fetch('api/sync-covers.php', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) break;
+
+        if (data.updated > 0) {
+          console.log(`Covers: +${data.updated} (${data.remaining} remaining)`);
+          await loadMovies();
+          renderAll();
+        }
+
+        if (data.done || data.remaining === 0) {
+          console.log('Cover sync complete');
+          break;
+        }
+
+        await new Promise(r => setTimeout(r, 1500));
+      } catch (e) {
+        console.warn('Cover sync paused:', e);
+        break;
+      }
+    }
+  })();
 }
 
 // Load movies (list + availability from Polaris recordset sync)
@@ -1007,9 +1089,10 @@ async function loadMovies() {
       movieSource = data.source || 'unknown';
       lastSync = data.lastSync || null;
       const availableCount = movies.filter(m => m.available === true).length;
+      const withCovers = movies.filter(m => m.cover && !m.cover.includes('no-cover')).length;
       console.log(`Loaded ${movies.length} movies from ${movieSource}` +
         (lastSync ? ` (synced ${lastSync})` : '') +
-        ` — ${availableCount} available`);
+        ` — ${availableCount} available, ${withCovers} with covers`);
       if (movieSource === 'csv') {
         console.warn('Using CSV fallback — run "Sync Movies from Polaris" in the staff dashboard for live In/Out status.');
       }
