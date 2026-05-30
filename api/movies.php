@@ -130,7 +130,9 @@ function getMergedMovies() {
         }
 
         $movie = applyCoverMapsToMovie($movie, $coverMaps);
-        $merged[] = enrichMovieAvailability($movie);
+        $movie = enrichMovieAvailability($movie);
+        $movie = enrichMovieShelfNumber($movie);
+        $merged[] = $movie;
     }
 
     usort($merged, fn($a, $b) => strcasecmp($a['title'], $b['title']));

@@ -182,3 +182,36 @@ function applyCoverMapsToMovie(array $movie, array $coverMaps) {
     }
     return $movie;
 }
+
+/**
+ * Extract shelf number from call number (last 1–4 digit token).
+ * e.g. "PG13 DVD 86" → "86", "G DVD 7" → "7"
+ */
+function extractShelfNumberFromCallNumber($callNumber) {
+    $callNumber = trim($callNumber ?? '');
+    if ($callNumber === '') {
+        return null;
+    }
+
+    $parts = preg_split('/\s+/', $callNumber);
+    for ($i = count($parts) - 1; $i >= 0; $i--) {
+        if (preg_match('/^\d{1,4}$/', $parts[$i])) {
+            return $parts[$i];
+        }
+    }
+
+    return null;
+}
+
+function enrichMovieShelfNumber(array $movie) {
+    if (empty($movie['shelfNumber']) && !empty($movie['callNumber'])) {
+        $sn = extractShelfNumberFromCallNumber($movie['callNumber']);
+        if ($sn !== null) {
+            $movie['shelfNumber'] = $sn;
+        }
+    }
+    if (!empty($movie['shelfNumber'])) {
+        $movie['dvdId'] = (string)$movie['shelfNumber'];
+    }
+    return $movie;
+}

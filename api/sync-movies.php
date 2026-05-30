@@ -175,6 +175,7 @@ try {
 
         $movie = applyCoverMapsToMovie($movie, $coverMaps);
         $movie = enrichMovieAvailability($movie);
+        $movie = enrichMovieShelfNumber($movie);
 
         $movieList[] = $movie;
         $dvdCounter++;
