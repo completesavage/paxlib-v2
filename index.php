@@ -1273,10 +1273,14 @@ async function openMovie(barcode) {
   statusText.textContent = status;
   $('#modalStatus').className = 'badge badge-status ' + (isAvailable ? 'in' : 'out');
 
-  $('#btnRequestNow').style.display = 'block';
-  $('#btnPlaceHold').style.display = (!currentUser || !currentUser.nameOnly) ? 'block' : 'none';
+  updateModalActionButtons(isAvailable);
 
   $('#movieModal').classList.add('visible');
+}
+
+function updateModalActionButtons(isAvailable) {
+  $('#btnRequestNow').style.display = isAvailable ? 'block' : 'none';
+  $('#btnPlaceHold').style.display = 'block';
 }
 
 function closeMovie() {
@@ -1284,11 +1288,21 @@ function closeMovie() {
 }
 
 // Login
-function showLogin() {
+function showLogin(forHold = false) {
   $('#barcodeInput').value = '';
   $('#loginError').classList.remove('visible');
+  const sub = document.querySelector('#loginModal .login-sub');
+  if (sub) {
+    sub.textContent = forHold
+      ? 'Enter your library card to place a hold'
+      : 'Scan or enter your library card';
+  }
   $('#loginModal').classList.add('visible');
   setTimeout(() => $('#barcodeInput').focus(), 100);
+}
+
+function showHoldLogin() {
+  showLogin(true);
 }
 
 function closeLogin() {
@@ -1381,6 +1395,12 @@ async function doLogin() {
     toast(`Welcome, ${currentUser.name}!`, 'success');
     resetIdleTimer();
 
+    if (_pendingHoldAfterLogin) {
+      _pendingHoldAfterLogin = false;
+      await requestMovie('hold');
+      return;
+    }
+
   } catch (e) {
     hideLoading();
     console.error("Login API error:", e);
@@ -1413,6 +1433,7 @@ function doLogout() {
 
 // ── Get Now modal (card OR name) ──────────────────────────────────────────────
 let _pendingGetNowMovie = null;
+let _pendingHoldAfterLogin = false;
 
 function showGetNowLogin(movie) {
   _pendingGetNowMovie = movie || currentMovie;
@@ -1660,24 +1681,34 @@ function formatDate(dateStr) {
 
 // Request movie
 async function requestMovie(type) {
-  if (!currentUser) {
-    closeMovie();
-    if (type === 'now') {
-      showGetNowLogin();
-    } else {
-      showLogin(); // card only for holds
-    }
+  if (!currentMovie?.barcode) {
+    toast('Movie not selected', 'error');
     return;
   }
 
-  // Name-only users can only do Get Now
-  if (type === 'hold' && currentUser.nameOnly) {
-    toast('Please sign in with your library card to place a hold', 'error');
+  const isAvailable = currentMovie.available === true;
+
+  if (type === 'now' && !isAvailable) {
+    toast('This DVD is checked out. Place a hold to reserve it.', 'error');
     return;
   }
+
+  if (type === 'now' && !currentUser) {
+    closeMovie();
+    showGetNowLogin();
+    return;
+  }
+
+  if (type === 'hold') {
+    if (!currentUser || !currentUser.barcode || currentUser.nameOnly) {
+      _pendingHoldAfterLogin = true;
+      closeMovie();
+      showHoldLogin();
+      return;
+    }
+  }
   
-  // PHASE 1: Check if patron can checkout
-  if (patronStatus && !patronStatus.canCheckout && type === 'now') {
+  if (patronStatus && !patronStatus.canCheckout && type === 'now' && currentUser?.barcode) {
     let message = '⚠️ Cannot check out DVD. ';
     if (patronStatus.blockReasons && patronStatus.blockReasons.length > 0) {
       message += patronStatus.blockReasons.join('. ');
@@ -1686,7 +1717,6 @@ async function requestMovie(type) {
     return;
   }
   
-  // Show loading based on type
   if (type === 'hold') {
     showLoading('Placing hold...', 'This may take a few moments');
   } else {
@@ -1694,6 +1724,45 @@ async function requestMovie(type) {
   }
   
   try {
+    if (type === 'hold') {
+      try {
+        const holdBody = {
+          patronBarcode: currentUser.barcode,
+          itemBarcode: currentMovie.barcode,
+          dvdId: currentMovie.dvdId ?? null
+        };
+        if (currentMovie.bibRecordId) {
+          holdBody.bibRecordId = currentMovie.bibRecordId;
+        }
+
+        const holdRes = await fetch('api/hold.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(holdBody)
+        });
+
+        const responseText = await holdRes.text();
+        let holdData;
+        try {
+          holdData = JSON.parse(responseText);
+        } catch (parseError) {
+          hideLoading();
+          toast('Hold system error (invalid response)', 'error');
+          return;
+        }
+
+        if (!holdRes.ok || !holdData.ok) {
+          hideLoading();
+          toast('Hold failed: ' + (holdData.error || 'Unknown error'), 'error');
+          return;
+        }
+      } catch (e) {
+        hideLoading();
+        toast('Hold system unavailable', 'error');
+        return;
+      }
+    }
+
     const reqData = {
       movie: {
         barcode: currentMovie.barcode,
@@ -1723,60 +1792,6 @@ async function requestMovie(type) {
       hideLoading();
       toast('Request failed: ' + (data.error || 'Unknown error'), 'error');
       return;
-    }
-    
-    if (type === 'hold' && currentMovie.bibRecordId) {
-      try {
-        console.log('Placing hold with data:', {
-          patronBarcode: currentUser.barcode,
-          bibRecordId: currentMovie.bibRecordId,
-          itemBarcode: currentMovie.barcode,
-          dvdId: currentMovie.dvdId ?? null
-        });
-        
-        const holdRes = await fetch('api/hold.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            patronBarcode: currentUser.barcode,
-            bibRecordId: currentMovie.bibRecordId,
-            itemBarcode: currentMovie.barcode,
-            dvdId: currentMovie.dvdId ?? null
-          })
-        });
-        
-        console.log('Hold response status:', holdRes.status, holdRes.statusText);
-        
-        // Get response text first to see what we're actually getting
-        const responseText = await holdRes.text();
-        console.log('Hold response text:', responseText);
-        
-        let holdData;
-        try {
-          holdData = JSON.parse(responseText);
-        } catch (parseError) {
-          console.error('Failed to parse response as JSON:', parseError);
-          hideLoading();
-          toast('Hold system error (invalid response)', 'error');
-          return;
-        }
-        
-        console.log('Hold response data:', holdData);
-        
-        if (!holdRes.ok || !holdData.ok) {
-          console.error('Hold placement failed:', holdData);
-          hideLoading();
-          toast('Hold failed: ' + (holdData.error || 'Unknown error'), 'error');
-          return;
-        }
-        
-        console.log('Hold placed successfully:', holdData);
-      } catch (e) {
-        console.error('Polaris hold error:', e);
-        hideLoading();
-        toast('Hold system unavailable', 'error');
-        return;
-      }
     }
     
     hideLoading();
