@@ -141,7 +141,7 @@ try {
 
         // Skip non-DVD material types
         $matType = strtolower($rec['MaterialType'] ?? '');
-        if ($matType && $matType !== 'dvd') continue;
+        if ($matType && strpos($matType, 'dvd') === false) continue;
 
         // Clean title — strip " [videorecording]" suffix
         $rawTitle = $rec['Title'] ?? 'Unknown';
