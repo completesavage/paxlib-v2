@@ -14,6 +14,7 @@ $warning = $settings['warning'] ?? 15;
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title><?php echo htmlspecialchars($libraryName); ?> — DVD Collection</title>
+<!-- Paxlib Kiosk v3: recordset source, no availability polling -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -987,8 +988,9 @@ let currentMovie = null;
 let idleTimer = null;
 let warnInterval = null;
 
-// Initialize
+// Initialize — Paxlib Kiosk v3 (recordset; no availability polling)
 async function init() {
+  console.log('%c Paxlib Kiosk v3 — recordset mode ', 'background:#2e7d32;color:#fff;font-weight:bold;padding:2px 8px;border-radius:4px');
   await loadMovies();
   renderAll();
   setupEvents();
