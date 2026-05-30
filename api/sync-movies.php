@@ -120,10 +120,7 @@ try {
         ? (json_decode(file_get_contents($overridesFile), true) ?: [])
         : [];
 
-    $coversFile = "$dataDir/covers_cache.json";
-    $coverCache = file_exists($coversFile)
-        ? (json_decode(file_get_contents($coversFile), true) ?: [])
-        : [];
+    $coverMaps = buildCoverMaps($dataDir);
 
     $movieList = [];
     $dvdCounter = 1;
@@ -150,11 +147,6 @@ try {
         $status = $rec['Status'] ?? null;
         $existing = $existingByBarcode[$barcode] ?? [];
 
-        $cover = $overrides[$barcode]['cover']
-            ?? $existing['cover']
-            ?? $coverCache[$barcode]
-            ?? null;
-
         $bibRecordId = $overrides[$barcode]['bibRecordId']
             ?? $existing['bibRecordId']
             ?? null;
@@ -168,7 +160,7 @@ try {
             'callNumber' => $callNumber,
             'itemRecordId' => (int)($rec['RecordID'] ?? 0),
             'bibRecordId' => $bibRecordId,
-            'cover' => $cover,
+            'cover' => null,
             'location' => 'DVD Section',
             'status' => $status,
             'itemStatusId' => (int)($rec['ItemStatusID'] ?? 0),
@@ -179,8 +171,10 @@ try {
         if (isset($overrides[$barcode])) {
             $movie = array_merge($movie, $overrides[$barcode]);
             $movie['barcode'] = $barcode;
-            $movie = enrichMovieAvailability($movie);
         }
+
+        $movie = applyCoverMapsToMovie($movie, $coverMaps);
+        $movie = enrichMovieAvailability($movie);
 
         $movieList[] = $movie;
         $dvdCounter++;

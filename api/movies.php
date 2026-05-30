@@ -103,10 +103,11 @@ function loadSyncMeta() {
 }
 
 function getMergedMovies() {
-    global $listFile;
+    global $listFile, $dataDir;
     $overrides = loadOverrides();
     $source = 'csv';
     $meta = loadSyncMeta();
+    $coverMaps = buildCoverMaps($dataDir);
 
     if (file_exists($listFile)) {
         $raw = json_decode(file_get_contents($listFile), true);
@@ -128,6 +129,7 @@ function getMergedMovies() {
             $movie['barcode'] = $barcode;
         }
 
+        $movie = applyCoverMapsToMovie($movie, $coverMaps);
         $merged[] = enrichMovieAvailability($movie);
     }
 
@@ -161,7 +163,7 @@ function loadPolaris() {
 }
 
 function refreshMovieFromPolaris($barcode) {
-    global $coversFile, $overridesFile;
+    global $coversFile, $listFile;
 
     if (!loadPolaris()) {
         return ['ok' => false, 'error' => 'Polaris not available'];
@@ -176,19 +178,9 @@ function refreshMovieFromPolaris($barcode) {
 
     $item = $result['data'];
     $bib = $item['BibInfo'] ?? [];
-    $cover = null;
+    $cover = coverFromBibInfo($bib);
 
-    if (!empty($bib['UPCNumber'])) {
-        $cover = $api->buildCoverUrl($bib['UPCNumber']);
-    }
-    if (!$cover && !empty($bib['OCLCNumber'])) {
-        $cover = $api->buildCoverUrl(null, $bib['OCLCNumber']);
-    }
-    if (!$cover && !empty($bib['ISBN'])) {
-        $cover = $api->buildCoverUrl(null, null, $bib['ISBN']);
-    }
-
-    $noCover = defined('NO_COVER_PATH') ? NO_COVER_PATH : '/img/no-cover.svg';
+    $noCover = noCoverPath();
     if (!$cover) {
         $cover = $noCover;
     }
@@ -203,11 +195,30 @@ function refreshMovieFromPolaris($barcode) {
     if (!isset($overrides[$barcode])) {
         $overrides[$barcode] = [];
     }
-    $overrides[$barcode]['cover'] = $cover;
+    if (isUsableCover($cover)) {
+        $overrides[$barcode]['cover'] = $cover;
+    }
     if (!empty($item['AssociatedBibRecordID'])) {
         $overrides[$barcode]['bibRecordId'] = (int)$item['AssociatedBibRecordID'];
     }
     saveOverrides($overrides);
+
+    if (file_exists($listFile)) {
+        $movies = json_decode(file_get_contents($listFile), true) ?: [];
+        foreach ($movies as &$movie) {
+            if (($movie['barcode'] ?? '') === $barcode) {
+                if (isUsableCover($cover)) {
+                    $movie['cover'] = $cover;
+                }
+                if (!empty($item['AssociatedBibRecordID'])) {
+                    $movie['bibRecordId'] = (int)$item['AssociatedBibRecordID'];
+                }
+                break;
+            }
+        }
+        unset($movie);
+        file_put_contents($listFile, json_encode($movies, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    }
 
     return [
         'ok' => true,
