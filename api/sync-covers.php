@@ -24,6 +24,7 @@ if (file_exists(__DIR__ . '/../config.php')) {
 
 require_once __DIR__ . '/movie_helpers.php';
 require_once __DIR__ . '/polaris.php';
+require_once __DIR__ . '/omdb.php';
 
 $dataDir = __DIR__ . '/../data';
 $listFile = "$dataDir/movies_list.json";
@@ -145,6 +146,18 @@ try {
             }
             if (!empty($result['data']['AssociatedBibRecordID']) && empty($movies[$idx]['bibRecordId'])) {
                 $movies[$idx]['bibRecordId'] = (int)$result['data']['AssociatedBibRecordID'];
+            }
+        }
+
+        if (!isUsableCover($cover)) {
+            $title = $movies[$idx]['title'] ?? $entry['title'] ?? '';
+            $omdbResult = fetchOmdbForMovie($barcode, $title);
+            if ($omdbResult['ok']) {
+                $poster = omdbPosterUrl($omdbResult['data']);
+                if (isUsableCover($poster)) {
+                    $cover = $poster;
+                    $updated++;
+                }
             }
         }
 

@@ -132,6 +132,7 @@ function getMergedMovies() {
         $movie = applyCoverMapsToMovie($movie, $coverMaps);
         $movie = enrichMovieAvailability($movie);
         $movie = enrichMovieShelfNumber($movie);
+        $movie = enrichMovieCatalogFlags($movie);
         $merged[] = $movie;
     }
 
@@ -181,6 +182,25 @@ function refreshMovieFromPolaris($barcode) {
     $item = $result['data'];
     $bib = $item['BibInfo'] ?? [];
     $cover = coverFromBibInfo($bib);
+
+    if (!isUsableCover($cover) && file_exists(__DIR__ . '/omdb.php')) {
+        require_once __DIR__ . '/omdb.php';
+        $payload = getMergedMovies();
+        $title = '';
+        foreach ($payload['movies'] as $m) {
+            if (($m['barcode'] ?? '') === $barcode) {
+                $title = $m['title'] ?? '';
+                break;
+            }
+        }
+        $omdbResult = fetchOmdbForMovie($barcode, $title);
+        if ($omdbResult['ok']) {
+            $poster = omdbPosterUrl($omdbResult['data']);
+            if (isUsableCover($poster)) {
+                $cover = $poster;
+            }
+        }
+    }
 
     $noCover = noCoverPath();
     if (!$cover) {

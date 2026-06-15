@@ -139,7 +139,32 @@ function buildCoverMaps($dataDir) {
     ];
 }
 
+function resolveLocalUploadCover($barcode, $coversDir = null) {
+    $barcode = trim((string)$barcode);
+    if ($barcode === '') {
+        return null;
+    }
+
+    $coversDir = $coversDir ?? dirname(__DIR__) . '/uploads/covers';
+    if (!is_dir($coversDir)) {
+        return null;
+    }
+
+    foreach (['jpg', 'jpeg', 'png', 'gif', 'webp'] as $ext) {
+        $path = rtrim($coversDir, '/\\') . '/' . $barcode . '.' . $ext;
+        if (file_exists($path)) {
+            return '/uploads/covers/' . $barcode . '.' . $ext;
+        }
+    }
+
+    return null;
+}
+
 function resolveMovieCover($barcode, array $movie, array $coverMaps) {
+    $local = resolveLocalUploadCover($barcode);
+    if (isUsableCover($local)) {
+        return $local;
+    }
     if (isUsableCover($movie['cover'] ?? null)) {
         return $movie['cover'];
     }
@@ -214,4 +239,71 @@ function enrichMovieShelfNumber(array $movie) {
         $movie['dvdId'] = (string)$movie['shelfNumber'];
     }
     return $movie;
+}
+
+function parseMovieDate($value) {
+    if ($value === null || $value === '') {
+        return null;
+    }
+    $ts = strtotime((string)$value);
+    return $ts !== false ? $ts : null;
+}
+
+function isStatusIn($status) {
+    return isItemAvailable($status);
+}
+
+function isHotMovie(array $movie, $days = 14) {
+    if (!isStatusIn($movie['status'] ?? '')) {
+        return false;
+    }
+    $activity = parseMovieDate($movie['lastActivity'] ?? null);
+    if ($activity === null) {
+        return false;
+    }
+    return $activity >= strtotime("-{$days} days");
+}
+
+function isNewArrivalMovie(array $movie) {
+    $dateAdded = parseMovieDate($movie['dateAdded'] ?? null);
+    if ($dateAdded === null) {
+        return false;
+    }
+    $monthStart = strtotime(date('Y-m-01 00:00:00'));
+    $monthEnd = strtotime(date('Y-m-t 23:59:59'));
+    return $dateAdded >= $monthStart && $dateAdded <= $monthEnd;
+}
+
+function enrichMovieCatalogFlags(array $movie) {
+    $movie['isHot'] = isHotMovie($movie);
+    $movie['isNew'] = isNewArrivalMovie($movie);
+    return $movie;
+}
+
+function sortMoviesByDateField(array $movies, $field, $desc = true) {
+    usort($movies, function ($a, $b) use ($field, $desc) {
+        $ta = parseMovieDate($a[$field] ?? null) ?? 0;
+        $tb = parseMovieDate($b[$field] ?? null) ?? 0;
+        if ($ta === $tb) {
+            return strcasecmp($a['title'] ?? '', $b['title'] ?? '');
+        }
+        return $desc ? ($tb <=> $ta) : ($ta <=> $tb);
+    });
+    return $movies;
+}
+
+function filterHotMovies(array $movies, $days = 14) {
+    return sortMoviesByDateField(
+        array_values(array_filter($movies, fn($m) => isHotMovie($m, $days))),
+        'lastActivity',
+        true
+    );
+}
+
+function filterNewArrivalMovies(array $movies) {
+    return sortMoviesByDateField(
+        array_values(array_filter($movies, fn($m) => isNewArrivalMovie($m))),
+        'dateAdded',
+        true
+    );
 }

@@ -151,6 +151,13 @@ try {
             ?? $existing['bibRecordId']
             ?? null;
 
+        $dateAdded = null;
+        if (!empty($existing['dateAdded'])) {
+            $dateAdded = $existing['dateAdded'];
+        } elseif (!isset($existingByBarcode[$barcode])) {
+            $dateAdded = date('c');
+        }
+
         $movie = enrichMovieAvailability([
             'dvdId' => (string)$dvdCounter,
             'id' => (string)$dvdCounter,
@@ -164,7 +171,8 @@ try {
             'location' => 'DVD Section',
             'status' => $status,
             'itemStatusId' => (int)($rec['ItemStatusID'] ?? 0),
-            'lastActivity' => $rec['LastActivityDate'] ?? null,
+            'lastActivity' => $rec['LastActivityDate'] ?? ($existing['lastActivity'] ?? null),
+            'dateAdded' => $dateAdded,
             'sortTitle' => $rec['SortTitle'] ?? '',
         ]);
 
