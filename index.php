@@ -271,6 +271,23 @@ body.getnow-osk-open #getNowModal.visible {
   object-fit: cover;
   background: #e0e0e0;
 }
+.poster-wrap {
+  position: relative;
+}
+.badge-new {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: #e53935;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  z-index: 2;
+}
 .movie-info { padding: 10px; }
 .movie-title {
   font-size: 13px;
@@ -414,6 +431,59 @@ body.getnow-osk-open #getNowModal.visible {
 .btn-blue:hover { background: #0d47a1; }
 .btn-gray { background: #f5f5f5; color: #333; border: 1px solid #ddd; }
 .btn-gray:hover { background: #eee; }
+.btn-purple { background: #6a1b9a; color: white; }
+.btn-purple:hover { background: #4a148c; }
+
+.ai-overview-section {
+  margin-bottom: 16px;
+  padding: 14px;
+  background: #f3e5f5;
+  border-radius: 8px;
+  border-left: 4px solid #6a1b9a;
+}
+.ai-overview-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #4a148c;
+  margin-bottom: 8px;
+}
+.ai-overview-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #444;
+}
+.ai-overview-loading {
+  font-size: 13px;
+  color: #666;
+  font-style: italic;
+}
+.ai-ask-panel {
+  display: none;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: #e8eaf6;
+  border-radius: 8px;
+}
+.ai-ask-panel.visible { display: block; }
+.ai-ask-input {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  border: 2px solid #c5cae9;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  outline: none;
+}
+.ai-ask-input:focus { border-color: #3f51b5; }
+.ai-ask-answer {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  padding: 10px;
+  background: white;
+  border-radius: 6px;
+  min-height: 40px;
+}
 
 /* Login Modal */
 .login-box { padding: 30px; text-align: center; }
@@ -800,7 +870,7 @@ body.getnow-osk-open #getNowModal.visible {
       </div>
     </div>
     <div class="category">
-      <div class="category-title">🎬 Recently Added</div>
+      <div class="category-title">🔥 Hot Movies</div>
       <div class="category-scroll" id="rowRecent">
         <div class="loading"><div class="spinner"></div>Loading...</div>
       </div>
@@ -867,7 +937,18 @@ body.getnow-osk-open #getNowModal.visible {
       </div>
     </div>
     <div class="modal-body">
+      <div class="ai-overview-section" id="aiOverviewSection">
+        <div class="ai-overview-title">✨ AI Overview</div>
+        <div class="ai-overview-text ai-overview-loading" id="modalOverview">Loading overview…</div>
+      </div>
+      <div class="ai-ask-panel" id="aiAskPanel">
+        <div class="ai-overview-title">💬 Ask about this movie</div>
+        <input type="text" class="ai-ask-input" id="aiAskInput" placeholder="e.g. Is this good for kids?">
+        <button class="btn btn-lg btn-purple" id="btnAiAskSubmit" style="margin-bottom:10px;">Ask</button>
+        <div class="ai-ask-answer" id="aiAskAnswer"></div>
+      </div>
       <div class="modal-actions">
+        <button class="btn btn-lg btn-purple" id="btnAskAi">🤖 Ask AI About This Movie</button>
         <button class="btn btn-lg btn-primary" id="btnRequestNow">📋 Get Now — Staff will pull it</button>
         <button class="btn btn-lg btn-blue" id="btnPlaceHold">📌 Place a Hold — Pick up another day</button>
         <button class="btn btn-lg btn-gray" id="btnCloseMovie">Close</button>
@@ -1137,19 +1218,43 @@ function updateFilterCounts() {
 function card(m) {
   const coverSrc = m.cover || NO_COVER;
   const unavailableClass = m.available === false ? ' unavailable' : '';
+  const newBadge = m.isNew ? '<span class="badge-new">NEW</span>' : '';
   
   return `
     <div class="movie-card${unavailableClass}" data-barcode="${m.barcode}">
-      <img class="movie-poster" src="${coverSrc}" 
-           onerror="this.src='${NO_COVER}'" 
-           onload="if(this.naturalWidth <= 2 && this.naturalHeight <= 2) this.src='${NO_COVER}'"
-           loading="lazy">
+      <div class="poster-wrap">
+        <img class="movie-poster" src="${coverSrc}" 
+             onerror="this.src='${NO_COVER}'" 
+             onload="if(this.naturalWidth <= 2 && this.naturalHeight <= 2) this.src='${NO_COVER}'"
+             loading="lazy">
+        ${newBadge}
+      </div>
       <div class="movie-info">
         <div class="movie-title">${esc(m.title)}</div>
         ${m.rating ? `<span class="movie-rating">${esc(m.rating)}</span>` : ''}
       </div>
     </div>
   `;
+}
+
+function getHotMovies(movieList) {
+  return movieList
+    .filter(m => m.isHot)
+    .sort((a, b) => {
+      const ta = Date.parse(a.lastActivity || '') || 0;
+      const tb = Date.parse(b.lastActivity || '') || 0;
+      return tb - ta;
+    });
+}
+
+function getAutoNewArrivals(movieList) {
+  return movieList
+    .filter(m => m.isNew)
+    .sort((a, b) => {
+      const ta = Date.parse(a.dateAdded || '') || 0;
+      const tb = Date.parse(b.dateAdded || '') || 0;
+      return tb - ta;
+    });
 }
 
 // Render all sections
@@ -1168,15 +1273,20 @@ function renderAll() {
         ? featured.map(card).join('') 
         : filteredMovies.slice(0, 10).map(card).join('');
       
-      // New arrivals
+      // New arrivals — staff picks or auto (added this month)
       const newBarcodes = s.newArrivals || [];
-      const newArrivals = getFilteredMovies(newBarcodes.map(bc => movieMap[bc]).filter(Boolean));
-      $('#rowNew').innerHTML = newArrivals.length 
-        ? newArrivals.map(card).join('') 
-        : filteredMovies.slice(10, 20).map(card).join('');
+      const curatedNew = getFilteredMovies(newBarcodes.map(bc => movieMap[bc]).filter(Boolean));
+      const autoNew = getAutoNewArrivals(filteredMovies);
+      const newArrivals = curatedNew.length ? curatedNew : autoNew;
+      $('#rowNew').innerHTML = newArrivals.length
+        ? newArrivals.map(card).join('')
+        : '<div class="empty" style="padding:20px;">No new arrivals this month</div>';
       
-      // Recent
-      $('#rowRecent').innerHTML = filteredMovies.slice(20, 35).map(card).join('');
+      // Hot movies — in-status with recent activity
+      const hotMovies = getHotMovies(filteredMovies);
+      $('#rowRecent').innerHTML = hotMovies.length
+        ? hotMovies.map(card).join('')
+        : '<div class="empty" style="padding:20px;">No hot movies right now</div>';
       
       // All movies grid
       $('#gridAll').innerHTML = filteredMovies.map(card).join('');
@@ -1185,8 +1295,10 @@ function renderAll() {
     })
     .catch(() => {
       $('#rowFeatured').innerHTML = filteredMovies.slice(0, 10).map(card).join('');
-      $('#rowNew').innerHTML = filteredMovies.slice(10, 20).map(card).join('');
-      $('#rowRecent').innerHTML = filteredMovies.slice(20, 35).map(card).join('');
+      const autoNew = getAutoNewArrivals(filteredMovies);
+      $('#rowNew').innerHTML = autoNew.length ? autoNew.map(card).join('') : '';
+      const hotMovies = getHotMovies(filteredMovies);
+      $('#rowRecent').innerHTML = hotMovies.length ? hotMovies.map(card).join('') : '';
       $('#gridAll').innerHTML = filteredMovies.map(card).join('');
       
       attachClicks();
@@ -1275,7 +1387,67 @@ async function openMovie(barcode) {
 
   updateModalActionButtons(isAvailable);
 
+  $('#aiAskPanel').classList.remove('visible');
+  $('#aiAskInput').value = '';
+  $('#aiAskAnswer').textContent = '';
+  loadMovieOverview(barcode, currentMovie.title || '');
+
   $('#movieModal').classList.add('visible');
+}
+
+async function loadMovieOverview(barcode, title) {
+  const el = $('#modalOverview');
+  el.className = 'ai-overview-text ai-overview-loading';
+  el.textContent = 'Loading overview…';
+
+  try {
+    const url = `api/movie-ai.php?action=overview&barcode=${encodeURIComponent(barcode)}&title=${encodeURIComponent(title)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    el.className = 'ai-overview-text';
+    if (data.ok && data.overview) {
+      el.textContent = data.overview;
+    } else {
+      el.textContent = data.error || 'Overview not available.';
+    }
+  } catch (e) {
+    el.className = 'ai-overview-text';
+    el.textContent = 'Could not load overview.';
+  }
+}
+
+function toggleAiAskPanel() {
+  const panel = $('#aiAskPanel');
+  panel.classList.toggle('visible');
+  if (panel.classList.contains('visible')) {
+    $('#aiAskInput').focus();
+  }
+}
+
+async function submitAiQuestion() {
+  if (!currentMovie) return;
+
+  const question = ($('#aiAskInput').value || '').trim();
+  if (!question) return;
+
+  const answerEl = $('#aiAskAnswer');
+  answerEl.textContent = 'Thinking…';
+
+  try {
+    const res = await fetch('api/movie-ai.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        barcode: currentMovie.barcode,
+        title: currentMovie.title || '',
+        question,
+      }),
+    });
+    const data = await res.json();
+    answerEl.textContent = data.ok ? data.answer : (data.error || 'Could not get an answer.');
+  } catch (e) {
+    answerEl.textContent = 'Could not reach the AI assistant.';
+  }
 }
 
 function updateModalActionButtons(isAvailable) {
@@ -1962,6 +2134,11 @@ function setupEvents() {
   $('#btnCloseMovie').onclick = closeMovie;
   $('#btnRequestNow').onclick = () => requestMovie('now');
   $('#btnPlaceHold').onclick = () => requestMovie('hold');
+  $('#btnAskAi').onclick = toggleAiAskPanel;
+  $('#btnAiAskSubmit').onclick = submitAiQuestion;
+  $('#aiAskInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitAiQuestion();
+  });
   $('#movieModal').onclick = e => { if (e.target.id === 'movieModal') closeMovie(); };
   
   // Login
