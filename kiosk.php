@@ -1133,6 +1133,19 @@ let currentMovie = null;
 let idleTimer = null;
 let warnInterval = null;
 let kioskSettings = {};
+let autoSyncTimer = null;
+
+function getSyncIntervalMinutes() {
+  return Math.max(60, parseInt(kioskSettings.syncIntervalMinutes, 10) || 60);
+}
+
+function movieNeedsCoverSync(m) {
+  const c = m.cover || '';
+  if (!c || c.includes('no-cover')) return true;
+  if (/isbn=\/MC\.GIF/i.test(c) && !/isbn=\d+\/MC\.GIF/i.test(c)) return true;
+  if (c.includes('media-amazon.com')) return true;
+  return false;
+}
 
 // Initialize — Paxlib Kiosk v3 (recordset; no availability polling)
 async function init() {
@@ -1141,7 +1154,8 @@ async function init() {
   await loadMovies();
   renderAll();
   setupEvents();
-  maybeAutoSyncMovies();
+  await maybeAutoSyncMovies();
+  scheduleAutoSync();
   startCoverSyncIfNeeded();
 }
 
@@ -1155,11 +1169,20 @@ async function loadKioskSettings() {
   }
 }
 
+function scheduleAutoSync() {
+  if (autoSyncTimer) clearInterval(autoSyncTimer);
+  if (kioskSettings.autoSyncMovies === false) return;
+
+  const intervalMs = getSyncIntervalMinutes() * 60 * 1000;
+  autoSyncTimer = setInterval(() => maybeAutoSyncMovies(), intervalMs);
+  console.log(`Auto-sync scheduled every ${getSyncIntervalMinutes()} minutes`);
+}
+
 // Re-sync movie list + availability from Polaris recordset when stale
 async function maybeAutoSyncMovies() {
   if (kioskSettings.autoSyncMovies === false) return;
 
-  const intervalMin = parseInt(kioskSettings.syncIntervalMinutes, 10) || 15;
+  const intervalMin = getSyncIntervalMinutes();
   try {
     const res = await fetch('api/sync-movies.php');
     const data = await res.json();
@@ -1191,8 +1214,8 @@ async function maybeAutoSyncMovies() {
 
 // Fetch missing covers in the background (Syndetics via Polaris item lookup)
 async function startCoverSyncIfNeeded() {
-  const missing = movies.filter(m => !m.cover || m.cover.includes('no-cover')).length;
-  if (missing === 0) return;
+  const needsCover = movies.some(m => movieNeedsCoverSync(m));
+  if (!needsCover) return;
 
   console.log(`Fetching covers in background (${missing} missing)…`);
 
@@ -1397,14 +1420,11 @@ function renderAll() {
         ? featured.map(card).join('') 
         : filteredMovies.slice(0, 10).map(card).join('');
       
-      // New arrivals — staff picks or auto (added this month)
-      const newBarcodes = s.newArrivals || [];
-      const curatedNew = getFilteredMovies(newBarcodes.map(bc => movieMap[bc]).filter(Boolean));
-      const autoNew = getAutoNewArrivals(filteredMovies);
-      const newArrivals = curatedNew.length ? curatedNew : autoNew;
+      // New arrivals — ShelfLocation "New Arrivals" from Polaris recordset
+      const newArrivals = getAutoNewArrivals(filteredMovies);
       $('#rowNew').innerHTML = newArrivals.length
         ? newArrivals.map(card).join('')
-        : '<div class="empty" style="padding:20px;">No new arrivals this month</div>';
+        : '<div class="empty" style="padding:20px;">No new arrivals right now</div>';
       
       // Hot movies — in-status with recent activity
       const hotMovies = getHotMovies(filteredMovies);

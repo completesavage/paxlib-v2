@@ -12,6 +12,7 @@ set_time_limit(0);
 ini_set('memory_limit', '256M');
 
 require __DIR__ . '/config.php';
+require __DIR__ . '/api/movie_helpers.php';
 
 echo "=== Cover Cache Builder ===\n\n";
 
@@ -157,23 +158,9 @@ foreach ($barcodes as $barcode => $title) {
         continue;
     }
     
-    // Build cover URL
+    // Build Syndetics cover URL (ISBN + UPC + OCLC)
     $bib = $data['BibInfo'];
-    $coverUrl = null;
-    
-    $syndeticsBase = 'https://secure.syndetics.com/index.aspx?isbn=/MC.GIF&client=' 
-                   . (defined('SYNDETICS_CLIENT') ? SYNDETICS_CLIENT : 'ilheartland');
-    
-    if (!empty($bib['UPCNumber'])) {
-        $upc = preg_replace('/[^0-9]/', '', $bib['UPCNumber']);
-        if ($upc) {
-            $coverUrl = $syndeticsBase . '&upc=' . rawurlencode($upc);
-        }
-    }
-    
-    if (!$coverUrl && !empty($bib['OCLCNumber'])) {
-        $coverUrl = $syndeticsBase . '&oclc=' . rawurlencode($bib['OCLCNumber']);
-    }
+    $coverUrl = coverFromBibInfo($bib);
     
     if ($coverUrl) {
         $cache[$barcode] = $coverUrl;
