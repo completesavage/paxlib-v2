@@ -1250,11 +1250,7 @@ function getHotMovies(movieList) {
 function getAutoNewArrivals(movieList) {
   return movieList
     .filter(m => m.isNew)
-    .sort((a, b) => {
-      const ta = Date.parse(a.dateAdded || '') || 0;
-      const tb = Date.parse(b.dateAdded || '') || 0;
-      return tb - ta;
-    });
+    .sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
 }
 
 // Render all sections

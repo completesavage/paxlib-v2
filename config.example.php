@@ -20,3 +20,10 @@ define('SESSION_TIMEOUT', 90);
 
 // Polaris record set ID for the kiosk DVD collection
 define('DVD_RECORDSET_ID', 473530);
+
+// OMDb API key (https://www.omdbapi.com/apikey.aspx)
+define('OMDB_API_KEY', 'YOUR_OMDB_API_KEY');
+
+// Optional: low-cost AI for movie overviews & patron Q&A (Groq: https://console.groq.com)
+// define('GROQ_API_KEY', 'your-groq-api-key');
+// define('GROQ_MODEL', 'llama-3.1-8b-instant');
