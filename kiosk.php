@@ -1134,6 +1134,7 @@ let idleTimer = null;
 let warnInterval = null;
 let kioskSettings = {};
 let autoSyncTimer = null;
+let newArrivalBarcodes = [];
 
 function getSyncIntervalMinutes() {
   return Math.max(60, parseInt(kioskSettings.syncIntervalMinutes, 10) || 60);
@@ -1142,8 +1143,8 @@ function getSyncIntervalMinutes() {
 function movieNeedsCoverSync(m) {
   const c = m.cover || '';
   if (!c || c.includes('no-cover')) return true;
+  if (!c.includes('syndetics.com') && !c.includes('/uploads/covers/')) return true;
   if (/isbn=\/MC\.GIF/i.test(c) && !/isbn=\d+\/MC\.GIF/i.test(c)) return true;
-  if (c.includes('media-amazon.com')) return true;
   return false;
 }
 
@@ -1254,13 +1255,14 @@ async function loadMovies() {
     if (data.ok) {
       movies = data.items || [];
       movieMap = Object.fromEntries(movies.map(m => [m.barcode, m]));
+      newArrivalBarcodes = data.newArrivals || [];
       movieSource = data.source || 'unknown';
       lastSync = data.lastSync || null;
       const availableCount = movies.filter(m => m.available === true).length;
       const withCovers = movies.filter(m => m.cover && !m.cover.includes('no-cover')).length;
       console.log(`Loaded ${movies.length} movies from ${movieSource}` +
         (lastSync ? ` (synced ${lastSync})` : '') +
-        ` — ${availableCount} available, ${withCovers} with covers`);
+        ` — ${availableCount} available, ${withCovers} with covers, ${data.newArrivalsCount ?? newArrivalBarcodes.length} new arrivals`);
       if (movieSource === 'csv') {
         console.warn('Using CSV fallback — run "Sync Movies from Polaris" in the staff dashboard for live In/Out status.');
       }
@@ -1399,9 +1401,11 @@ function getHotMovies(movieList) {
 }
 
 function getAutoNewArrivals(movieList) {
-  return movieList
-    .filter(m => m.isNew)
-    .sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
+  const set = new Set(newArrivalBarcodes);
+  const list = set.size > 0
+    ? movieList.filter(m => set.has(m.barcode))
+    : movieList.filter(m => m.isNew);
+  return list.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
 }
 
 // Render all sections
