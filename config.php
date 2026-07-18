@@ -4,8 +4,8 @@
  */
 
 // Polaris API credentials (for leap_proxy.php)
-$username = 'YOUR_POLARIS_USERNAME';
-$password = 'YOUR_POLARIS_PASSWORD';
+$username = 'aidan.garza@share.ihls.lcl';
+$password = 'imsvg137';
 
 define('NO_COVER_PATH', '/img/no-cover.svg');
 define('SYNDETICS_CLIENT', 'ilheartland');
