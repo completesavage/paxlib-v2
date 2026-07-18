@@ -1215,8 +1215,8 @@ async function maybeAutoSyncMovies() {
 
 // Fetch missing covers in the background (Syndetics via Polaris item lookup)
 async function startCoverSyncIfNeeded() {
-  const needsCover = movies.some(m => movieNeedsCoverSync(m));
-  if (!needsCover) return;
+  const missing = movies.filter(m => movieNeedsCoverSync(m)).length;
+  if (missing === 0) return;
 
   console.log(`Fetching covers in background (${missing} missing)…`);
 
@@ -1650,8 +1650,18 @@ async function doLogin() {
 
   try {
     // First get basic patron info
-    const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`);
-    const data = await res.json();
+    const res = await fetch(`api/patron.php?barcode=${encodeURIComponent(barcode)}`, {
+      headers: { 'Accept': 'application/json' },
+      cache: 'no-store'
+    });
+    const responseText = await res.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Patron API returned non-JSON:', responseText);
+      throw new Error(`Patron API returned HTTP ${res.status} instead of valid JSON`);
+    }
 
     if (!data.ok || !data.patron) {
       hideLoading();
