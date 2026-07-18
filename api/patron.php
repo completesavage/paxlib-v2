@@ -6,6 +6,7 @@
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
+ini_set('display_errors', '0');
 
 require_once __DIR__ . '/polaris.php';
 
@@ -53,15 +54,27 @@ try {
             ]
         ]);
     } else {
-        http_response_code(404);
+        $resultError = $result['error'] ?? 'Patron not found';
+        $isNotFound = $resultError === 'Patron not found';
+        $isAuthFailure = stripos($resultError, 'authentication') !== false ||
+            in_array(($result['status'] ?? null), [401, 403], true);
+
+        if ($isNotFound) {
+            http_response_code(404);
+        } elseif ($isAuthFailure) {
+            http_response_code(503);
+        } else {
+            http_response_code(502);
+        }
+
         echo json_encode([
             'ok' => false,
-            'error' => 'Patron not found',
+            'error' => $resultError,
             'details' => $result
         ]);
     }
 
-} catch (Exception $e) {
+} catch (Throwable $e) {
     http_response_code(500);
     echo json_encode([
         'ok' => false,

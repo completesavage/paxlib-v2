@@ -328,12 +328,17 @@ class PolarisAPI {
         $resultId = $this->apiRequest('GET', $pathId);
 
         if (!$resultId['ok']) {
+            $status = $resultId['status'] ?? null;
+            $upstreamError = $resultId['error'] ?? '';
+            $isAuthFailure = $status === 401 || $status === 403 ||
+                stripos($upstreamError, 'authentication') !== false;
+
             return [
                 'ok' => false,
-                'error' => $resultId['status'] === 401 || $resultId['status'] === 403
-                    ? 'Polaris authentication/permission failed'
-                    : 'Patron lookup failed',
-                'status' => $resultId['status'] ?? null,
+                'error' => $isAuthFailure
+                    ? 'Polaris authentication failed'
+                    : ($upstreamError ?: 'Patron lookup failed'),
+                'status' => $status,
                 'raw' => $resultId['raw'] ?? null
             ];
         }
