@@ -24,9 +24,13 @@ try {
     // DEBUG: Log raw API response
     error_log("PolarisAPI response for barcode $barcode: " . print_r($result, true));
 
-   if ($result['ok'] && isset($result['data']['Registration'])) {
+    if ($result['ok'] && !empty($result['data']) && is_array($result['data'])) {
         $patron = $result['data'];
-        $reg = $patron['Registration'];
+        // Some Polaris versions return registration fields under Registration;
+        // others expose some fields at the top level.
+        $reg = isset($patron['Registration']) && is_array($patron['Registration'])
+            ? $patron['Registration']
+            : $patron;
     
         $firstName = $reg['NameFirst'] ?? '';
         $lastName = $reg['NameLast'] ?? '';

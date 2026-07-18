@@ -315,18 +315,71 @@ class PolarisAPI {
      * Get patron by barcode
      */
     public function getPatronByBarcode($barcode) {
-        // Step 1: Get PatronID from barcode
-        $pathId = "polaris/{$this->orgId}/{$this->workstationId}/ids/patrons?id={$barcode}&type=barcode";
-        $resultId = $this->apiRequest('GET', $pathId);
-    
-        if (!$resultId['ok'] || empty($resultId['data'])) {
-            return ['ok' => false, 'error' => 'Patron not found', 'raw' => $resultId['raw'] ?? null];
+        $barcode = trim((string)$barcode);
+        if ($barcode === '') {
+            return ['ok' => false, 'error' => 'Missing patron barcode'];
         }
-    
-        $patronId = is_array($resultId['data']) ? $resultId['data'][0] : $resultId['data'];
-    
-        // Step 2: Get full patron data
-        $pathPatron = "polaris/{$this->orgId}/{$this->workstationId}/patrons/{$patronId}/";
+
+        // Step 1: Resolve the PatronID from the barcode.
+        // Polaris installations/versions may return a scalar ID, a numeric array,
+        // or an object such as {"PatronID": 123}. Handle all known shapes.
+        $encodedBarcode = rawurlencode($barcode);
+        $pathId = "polaris/{$this->orgId}/{$this->workstationId}/ids/patrons?id={$encodedBarcode}&type=barcode";
+        $resultId = $this->apiRequest('GET', $pathId);
+
+        if (!$resultId['ok']) {
+            return [
+                'ok' => false,
+                'error' => $resultId['status'] === 401 || $resultId['status'] === 403
+                    ? 'Polaris authentication/permission failed'
+                    : 'Patron lookup failed',
+                'status' => $resultId['status'] ?? null,
+                'raw' => $resultId['raw'] ?? null
+            ];
+        }
+
+        $data = $resultId['data'] ?? null;
+        $patronId = null;
+
+        if (is_int($data) || (is_string($data) && ctype_digit(trim($data)))) {
+            $patronId = trim((string)$data);
+        } elseif (is_array($data)) {
+            // Associative-object response.
+            foreach (['PatronID', 'PatronId', 'patronID', 'patronId', 'ID', 'Id', 'id'] as $key) {
+                if (isset($data[$key]) && (is_int($data[$key]) || ctype_digit(trim((string)$data[$key])))) {
+                    $patronId = trim((string)$data[$key]);
+                    break;
+                }
+            }
+
+            // Numeric-array response, including [{"PatronID":123}] or [123].
+            if ($patronId === null && isset($data[0])) {
+                $first = $data[0];
+                if (is_int($first) || (is_string($first) && ctype_digit(trim($first)))) {
+                    $patronId = trim((string)$first);
+                } elseif (is_array($first)) {
+                    foreach (['PatronID', 'PatronId', 'patronID', 'patronId', 'ID', 'Id', 'id'] as $key) {
+                        if (isset($first[$key]) && (is_int($first[$key]) || ctype_digit(trim((string)$first[$key])))) {
+                            $patronId = trim((string)$first[$key]);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($patronId === null || $patronId === '') {
+            error_log('Unexpected Polaris patron ID response: ' . print_r($data, true));
+            return [
+                'ok' => false,
+                'error' => empty($data) ? 'Patron not found' : 'Unexpected patron lookup response',
+                'status' => $resultId['status'] ?? null,
+                'raw' => $resultId['raw'] ?? null
+            ];
+        }
+
+        // Step 2: Get the full patron record.
+        $pathPatron = "polaris/{$this->orgId}/{$this->workstationId}/patrons/" . rawurlencode($patronId) . "/";
         return $this->apiRequest('GET', $pathPatron);
     }
 
