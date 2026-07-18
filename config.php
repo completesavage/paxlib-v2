@@ -16,5 +16,5 @@ define('DVD_RECORDSET_ID', 473530);
 define('OMDB_API_KEY', 'bb52036c');
 
 // Optional: low-cost AI for overviews & patron Q&A (Groq free tier: https://console.groq.com)
-// define('GROQ_API_KEY', 'your-groq-api-key');
-// define('GROQ_MODEL', 'llama-3.1-8b-instant');
+define('GROQ_API_KEY', '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');
+define('GROQ_MODEL', 'llama-3.1-8b-instant');
