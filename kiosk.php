@@ -1655,9 +1655,13 @@ async function doLogin() {
 
     if (!data.ok || !data.patron) {
       hideLoading();
-      $('#loginError').textContent = 'Card not found';
+      const isNotFound = res.status === 404 || data.error === 'Patron not found';
+      $('#loginError').textContent = isNotFound
+        ? 'Card not found'
+        : (data.error || 'Login system unavailable');
       $('#loginError').classList.add('visible');
-      toast('Invalid library card', 'error');
+      toast(isNotFound ? 'Invalid library card' : 'Library system error', 'error');
+      console.error('Patron lookup failed:', data);
       return;
     }
 
