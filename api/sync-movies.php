@@ -169,6 +169,7 @@ try {
             'bibRecordId' => $bibRecordId,
             'cover' => null,
             'location' => 'DVD Section',
+            'shelfLocation' => $rec['ShelfLocation'] ?? ($existing['shelfLocation'] ?? null),
             'status' => $status,
             'itemStatusId' => (int)($rec['ItemStatusID'] ?? 0),
             'lastActivity' => $rec['LastActivityDate'] ?? ($existing['lastActivity'] ?? null),

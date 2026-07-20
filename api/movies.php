@@ -146,12 +146,20 @@ function getMergedMovies() {
 }
 
 function buildListResponse(array $payload) {
+    $newArrivals = filterNewArrivalMovies($payload['movies']);
+    $newArrivalBarcodes = array_values(array_map(
+        fn($movie) => (string)($movie['barcode'] ?? ''),
+        $newArrivals
+    ));
+
     return [
         'ok' => true,
         'count' => count($payload['movies']),
         'source' => $payload['source'],
         'lastSync' => $payload['meta']['lastSync'] ?? null,
         'recordsetId' => $payload['meta']['source'] ?? null,
+        'newArrivals' => $newArrivalBarcodes,
+        'newArrivalsCount' => count($newArrivalBarcodes),
         'items' => $payload['movies'],
     ];
 }
