@@ -1,6 +1,7 @@
 <?php
 // api/item.php
 require __DIR__ . '/../config.php';
+require_once __DIR__ . '/movie_helpers.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -68,46 +69,10 @@ if ($data === null) {
     exit;
 }
 
-// build syndetics cover url in the exact format you gave:
-// https://secure.syndetics.com/index.aspx?isbn=/MC.GIF&client=ilheartland&upc=786936837360&oclc=(OCOLC)000000933515860
-function build_cover_url(array $data) {
-    if (empty($data['BibInfo']) || !is_array($data['BibInfo'])) {
-        return null;
-    }
-    $b = $data['BibInfo'];
-
-    // base matches your example
-    $base   = 'https://secure.syndetics.com/index.aspx?isbn=/MC.GIF&client=ilheartland';
-
-    // prefer UPC, then OCLC
-    if (!empty($b['UPCNumber'])) {
-        // strip everything except digits
-        $upc = preg_replace('/[^0-9]/', '', $b['UPCNumber']);
-        if ($upc !== '') {
-            return $base . '&upc=' . rawurlencode($upc);
-        }
-    }
-
-    if (!empty($b['OCLCNumber'])) {
-        // keep the (OCOLC) prefix exactly as polaris gives it
-        $oclc = $b['OCLCNumber'];
-        return $base . '&oclc=' . rawurlencode($oclc);
-    }
-
-    // if you ever want to fall back to isbn itself:
-    // if (!empty($b['ISBN'])) {
-    //     $isbn = preg_replace('/[^0-9Xx]/', '', $b['ISBN']);
-    //     if ($isbn !== '') {
-    //         return 'https://secure.syndetics.com/index.aspx?isbn='
-    //             . rawurlencode($isbn . '/MC.GIF')
-    //             . '&client=ilheartland';
-    //     }
-    // }
-
-    return null;
-}
-
-$cover = build_cover_url($data);
+// Build a complete Syndetics URL from every valid identifier Polaris returned.
+$cover = !empty($data['BibInfo']) && is_array($data['BibInfo'])
+    ? coverFromBibInfo($data['BibInfo'])
+    : null;
 
 echo json_encode([
     'ok'      => true,

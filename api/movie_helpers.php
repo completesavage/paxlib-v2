@@ -93,6 +93,44 @@ function loadCoverCacheFile($path) {
     return is_array($data) ? $data : [];
 }
 
+function normalizeMovieIdentityText($value) {
+    $value = preg_replace('/\s*\[videorecording\]\s*/i', '', (string)$value);
+    $value = strtoupper(trim($value));
+    return preg_replace('/[^A-Z0-9]+/', '', $value);
+}
+
+function movieCoverIdentity(array $movie) {
+    return [
+        'itemRecordId' => (int)($movie['itemRecordId'] ?? 0),
+        'bibRecordId' => (int)($movie['bibRecordId'] ?? 0),
+        'titleKey' => normalizeMovieIdentityText($movie['title'] ?? ''),
+    ];
+}
+
+function coverIdentityMatches(array $movie, $cachedMeta) {
+    if (!is_array($cachedMeta)) {
+        return false;
+    }
+
+    $current = movieCoverIdentity($movie);
+    $cachedItem = (int)($cachedMeta['itemRecordId'] ?? 0);
+    $cachedBib = (int)($cachedMeta['bibRecordId'] ?? 0);
+    $cachedTitle = (string)($cachedMeta['titleKey'] ?? '');
+
+    // Item record ID is the strongest signal and changes when a barcode is reused.
+    if ($current['itemRecordId'] > 0 && $cachedItem > 0) {
+        return $current['itemRecordId'] === $cachedItem;
+    }
+
+    // Bib ID is useful when the item endpoint has already supplied it.
+    if ($current['bibRecordId'] > 0 && $cachedBib > 0) {
+        return $current['bibRecordId'] === $cachedBib;
+    }
+
+    // Last-resort compatibility check for records created before metadata existed.
+    return $current['titleKey'] !== '' && $cachedTitle !== '' && $current['titleKey'] === $cachedTitle;
+}
+
 function loadLegacyMovieCovers($dataDir) {
     $legacyFile = rtrim($dataDir, '/\\') . '/movies_cache.json';
     $map = [];
@@ -113,7 +151,10 @@ function loadLegacyMovieCovers($dataDir) {
                 continue;
             }
             if (isUsableCover($movie['cover'] ?? null)) {
-                $map[$movie['barcode']] = $movie['cover'];
+                $map[$movie['barcode']] = [
+                    'cover' => $movie['cover'],
+                    'meta' => movieCoverIdentity($movie),
+                ];
             }
         }
         return $map;
@@ -125,7 +166,10 @@ function loadLegacyMovieCovers($dataDir) {
         }
         $bc = $movie['barcode'] ?? (is_string($barcode) ? $barcode : null);
         if ($bc && isUsableCover($movie['cover'] ?? null)) {
-            $map[$bc] = $movie['cover'];
+            $map[$bc] = [
+                'cover' => $movie['cover'],
+                'meta' => movieCoverIdentity($movie),
+            ];
         }
     }
 
@@ -135,6 +179,7 @@ function loadLegacyMovieCovers($dataDir) {
 function buildCoverMaps($dataDir) {
     return [
         'covers' => loadCoverCacheFile(rtrim($dataDir, '/\\') . '/covers_cache.json'),
+        'meta' => loadCoverCacheFile(rtrim($dataDir, '/\\') . '/covers_cache_meta.json'),
         'legacy' => loadLegacyMovieCovers($dataDir),
     ];
 }
@@ -165,39 +210,81 @@ function resolveMovieCover($barcode, array $movie, array $coverMaps) {
     if (isUsableCover($local)) {
         return $local;
     }
-    if (isUsableCover($movie['cover'] ?? null)) {
+
+    $meta = $coverMaps['meta'][$barcode] ?? null;
+    $trusted = coverIdentityMatches($movie, $meta);
+
+    // Only trust an in-list or cache cover when it belongs to this exact item/bib.
+    if ($trusted && isUsableCover($movie['cover'] ?? null)) {
         return $movie['cover'];
     }
-    if (isset($coverMaps['covers'][$barcode]) && isUsableCover($coverMaps['covers'][$barcode])) {
+    if ($trusted && isset($coverMaps['covers'][$barcode]) && isUsableCover($coverMaps['covers'][$barcode])) {
         return $coverMaps['covers'][$barcode];
     }
-    if (isset($coverMaps['legacy'][$barcode]) && isUsableCover($coverMaps['legacy'][$barcode])) {
-        return $coverMaps['legacy'][$barcode];
+
+    $legacy = $coverMaps['legacy'][$barcode] ?? null;
+    if (is_array($legacy)
+        && coverIdentityMatches($movie, $legacy['meta'] ?? null)
+        && isUsableCover($legacy['cover'] ?? null)) {
+        return $legacy['cover'];
+    }
+
+    return null;
+}
+
+function firstIdentifierValue($value, $pattern) {
+    $values = is_array($value) ? $value : [$value];
+    foreach ($values as $candidate) {
+        if (is_array($candidate)) {
+            $candidate = implode(' ', array_filter($candidate, 'is_scalar'));
+        }
+        if (!is_scalar($candidate)) {
+            continue;
+        }
+        if (preg_match($pattern, (string)$candidate, $m)) {
+            return $m[1] ?? $m[0];
+        }
     }
     return null;
 }
 
 function coverFromBibInfo(array $bib) {
     $client = defined('SYNDETICS_CLIENT') ? SYNDETICS_CLIENT : 'ilheartland';
-    $base = "https://secure.syndetics.com/index.aspx?isbn=/MC.GIF&client={$client}";
 
-    if (!empty($bib['UPCNumber'])) {
-        $upc = preg_replace('/[^0-9]/', '', $bib['UPCNumber']);
-        if ($upc !== '') {
-            return $base . '&upc=' . rawurlencode($upc);
+    // Do not strip all non-digits from an entire field: Polaris can return
+    // multiple identifiers, and concatenating them creates a bogus number.
+    $isbn = firstIdentifierValue($bib['ISBN'] ?? null, '/(?<!\d)(97[89]\d{10}|\d{9}[\dXx])(?!\d)/');
+    $upc = firstIdentifierValue($bib['UPCNumber'] ?? null, '/(?<!\d)(\d{12,14})(?!\d)/');
+
+    $oclcRaw = null;
+    $oclcValues = is_array($bib['OCLCNumber'] ?? null) ? $bib['OCLCNumber'] : [$bib['OCLCNumber'] ?? null];
+    foreach ($oclcValues as $candidate) {
+        if (!is_scalar($candidate)) {
+            continue;
+        }
+        if (preg_match('/(?:\(OCOLC\)|ocm|ocn|on)?\s*0*(\d{6,15})/i', (string)$candidate, $m)) {
+            $oclcRaw = '(OCOLC)' . str_pad($m[1], 15, '0', STR_PAD_LEFT);
+            break;
         }
     }
-    if (!empty($bib['OCLCNumber'])) {
-        return $base . '&oclc=' . rawurlencode($bib['OCLCNumber']);
-    }
-    if (!empty($bib['ISBN'])) {
-        $isbn = preg_replace('/[^0-9X]/i', '', strtoupper($bib['ISBN']));
-        if ($isbn !== '') {
-            return $base . '&isbn=' . rawurlencode($isbn);
-        }
+
+    if (!$isbn && !$upc && !$oclcRaw) {
+        return null;
     }
 
-    return null;
+    $isbnPart = $isbn ? strtoupper($isbn) . '/MC.GIF' : '/MC.GIF';
+    $url = 'https://secure.syndetics.com/index.aspx?isbn=' . $isbnPart
+        . '&client=' . rawurlencode($client);
+
+    if ($upc) {
+        $url .= '&upc=' . rawurlencode($upc);
+    }
+    if ($oclcRaw) {
+        // Keep the familiar (OCOLC) prefix readable; digits remain URL-safe.
+        $url .= '&oclc=' . $oclcRaw;
+    }
+
+    return $url;
 }
 
 function applyCoverMapsToMovie(array $movie, array $coverMaps) {

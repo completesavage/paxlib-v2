@@ -29,6 +29,7 @@ require_once __DIR__ . '/omdb.php';
 $dataDir = __DIR__ . '/../data';
 $listFile = "$dataDir/movies_list.json";
 $coversFile = "$dataDir/covers_cache.json";
+$coverMetaFile = "$dataDir/covers_cache_meta.json";
 $progressFile = "$dataDir/covers_sync_progress.json";
 $batchSize = 25;
 
@@ -97,6 +98,7 @@ try {
     }
 
     $coverCache = loadCoverCacheFile($coversFile);
+    $coverMeta = loadCoverCacheFile($coverMetaFile);
     $coverMaps = buildCoverMaps($dataDir);
     $missing = [];
 
@@ -162,14 +164,19 @@ try {
         }
 
         $coverCache[$barcode] = $cover;
+        $coverMeta[$barcode] = movieCoverIdentity($movies[$idx]);
+        $coverMeta[$barcode]['syncedAt'] = date('c');
         if (isUsableCover($cover)) {
             $movies[$idx]['cover'] = $cover;
+        } else {
+            unset($movies[$idx]['cover']);
         }
 
         usleep(100000);
     }
 
     file_put_contents($coversFile, json_encode($coverCache, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    file_put_contents($coverMetaFile, json_encode($coverMeta, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     saveMoviesList($listFile, $movies);
 
     $remaining = max(0, count($missing) - count($batch));

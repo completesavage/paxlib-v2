@@ -147,14 +147,19 @@ try {
         $status = $rec['Status'] ?? null;
         $existing = $existingByBarcode[$barcode] ?? [];
 
+        // A physical barcode can be reassigned to a replacement/new DVD.
+        // Never carry bibliographic metadata or dates across a changed record.
+        $sameItem = !empty($existing)
+            && (int)($existing['itemRecordId'] ?? 0) === (int)($rec['RecordID'] ?? 0)
+            && normalizeMovieIdentityText($existing['title'] ?? '') === normalizeMovieIdentityText($title);
+
         $bibRecordId = $overrides[$barcode]['bibRecordId']
-            ?? $existing['bibRecordId']
-            ?? null;
+            ?? ($sameItem ? ($existing['bibRecordId'] ?? null) : null);
 
         $dateAdded = null;
-        if (!empty($existing['dateAdded'])) {
+        if ($sameItem && !empty($existing['dateAdded'])) {
             $dateAdded = $existing['dateAdded'];
-        } elseif (!isset($existingByBarcode[$barcode])) {
+        } else {
             $dateAdded = date('c');
         }
 
