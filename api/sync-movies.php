@@ -156,10 +156,13 @@ try {
         $bibRecordId = $overrides[$barcode]['bibRecordId']
             ?? ($sameItem ? ($existing['bibRecordId'] ?? null) : null);
 
+        // New-arrival tracking is independent from cover/bib identity.
+        // Preserve the original first-seen date for every barcode already in
+        // the synced list; only brand-new barcodes receive today's date.
         $dateAdded = null;
-        if ($sameItem && !empty($existing['dateAdded'])) {
+        if (!empty($existing['dateAdded'])) {
             $dateAdded = $existing['dateAdded'];
-        } else {
+        } elseif (!isset($existingByBarcode[$barcode])) {
             $dateAdded = date('c');
         }
 
