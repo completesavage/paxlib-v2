@@ -19,6 +19,7 @@ echo "=== Cover Cache Builder ===\n\n";
 // Paths
 $csvPath = __DIR__ . '/dvds.csv';
 $cachePath = __DIR__ . '/data/covers_cache.json';
+$cacheMetaPath = __DIR__ . '/data/covers_cache_meta.json';
 $dataDir = __DIR__ . '/data';
 
 // Ensure data directory exists
@@ -29,6 +30,7 @@ if (!is_dir($dataDir)) {
 
 // Load existing cache
 $cache = [];
+$cacheMeta = file_exists($cacheMetaPath) ? (json_decode(file_get_contents($cacheMetaPath), true) ?: []) : [];
 if (file_exists($cachePath)) {
     $cache = json_decode(file_get_contents($cachePath), true) ?: [];
     echo "Loaded " . count($cache) . " cached covers\n";
@@ -37,12 +39,14 @@ if (file_exists($cachePath)) {
 // Load movie list (recordset sync preferred, CSV fallback)
 $listPath = __DIR__ . '/data/movies_list.json';
 $barcodes = [];
+$movieByBarcode = [];
 
 if (file_exists($listPath)) {
     $movies = json_decode(file_get_contents($listPath), true) ?: [];
     foreach ($movies as $m) {
         if (!empty($m['barcode']) && !empty($m['title'])) {
             $barcodes[$m['barcode']] = $m['title'];
+            $movieByBarcode[$m['barcode']] = $m;
         }
     }
     echo "Loaded " . count($barcodes) . " movies from movies_list.json\n";
@@ -54,6 +58,7 @@ if (file_exists($listPath)) {
             $title = trim($row[1]);
             if ($barcode && $title) {
                 $barcodes[$barcode] = $title;
+                $movieByBarcode[$barcode] = ['barcode' => $barcode, 'title' => $title];
             }
         }
     }
@@ -116,10 +121,14 @@ $errors = 0;
 
 foreach ($barcodes as $barcode => $title) {
     $processed++;
-    
-    // Skip if already cached and not too old
-    if (isset($cache[$barcode]) && $cache[$barcode] !== '/img/no-cover.svg') {
-        echo "[$processed/" . count($barcodes) . "] SKIP: $title (cached)\n";
+    $movie = $movieByBarcode[$barcode] ?? ['barcode' => $barcode, 'title' => $title];
+
+    // Skip only if the barcode still belongs to the same record/title.
+    if (isset($cache[$barcode])
+        && $cache[$barcode] !== '/img/no-cover.svg'
+        && coverIdentityMatches($movie, $cacheMeta[$barcode] ?? null)) {
+        echo "[$processed/" . count($barcodes) . "] SKIP: $title (cached)
+";
         continue;
     }
     
@@ -171,12 +180,16 @@ foreach ($barcodes as $barcode => $title) {
         echo "NO COVER\n";
     }
     
+    $cacheMeta[$barcode] = movieCoverIdentity($movie);
+    $cacheMeta[$barcode]['syncedAt'] = date('c');
+
     // Be nice to the API
     usleep(100000); // 100ms delay
 }
 
 // Save cache
 file_put_contents($cachePath, json_encode($cache, JSON_PRETTY_PRINT));
+file_put_contents($cacheMetaPath, json_encode($cacheMeta, JSON_PRETTY_PRINT));
 
 echo "\n=== Complete ===\n";
 echo "Processed: $processed\n";
