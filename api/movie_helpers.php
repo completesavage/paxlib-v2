@@ -352,22 +352,10 @@ function isHotMovie(array $movie, $days = 14) {
 }
 
 function isNewArrivalMovie(array $movie) {
-    // Polaris is the source of truth: anything shelved as "New Arrivals"
-    // should remain in the kiosk row regardless of when it was first synced.
+    // Polaris ShelfLocation is the only source of truth for this category.
+    // Do not fall back to dateAdded: a full sync can make every movie look new.
     $shelfLocation = strtolower(trim((string)($movie['shelfLocation'] ?? '')));
-    if ($shelfLocation === 'new arrivals') {
-        return true;
-    }
-
-    // Backward-compatible fallback for CSV/older cached records that do not
-    // contain ShelfLocation.
-    $dateAdded = parseMovieDate($movie['dateAdded'] ?? null);
-    if ($dateAdded === null) {
-        return false;
-    }
-    $monthStart = strtotime(date('Y-m-01 00:00:00'));
-    $monthEnd = strtotime(date('Y-m-t 23:59:59'));
-    return $dateAdded >= $monthStart && $dateAdded <= $monthEnd;
+    return $shelfLocation === 'new arrivals';
 }
 
 function enrichMovieCatalogFlags(array $movie) {
