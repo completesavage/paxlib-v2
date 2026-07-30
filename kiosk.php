@@ -681,6 +681,72 @@ body.ai-osk-open #movieModal.visible {
   background: #ffebee;
 }
 
+.session-checkout-btn {
+  display: none;
+  position: fixed;
+  top: 88px;
+  right: 18px;
+  z-index: 8500;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border: 3px solid #2e7d32;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #1b5e20;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 5px 18px rgba(0,0,0,.22);
+}
+.session-checkout-btn::before {
+  content: 'SESSION';
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: #6b746b;
+  display: block;
+}
+.session-checkout-btn:hover, .session-checkout-btn:focus {
+  background: #f1f8f1;
+  transform: translateY(-1px);
+}
+.session-checkout-btn.warning {
+  border-color: #f9a825;
+  color: #8a5a00;
+  background: #fffde7;
+}
+.session-checkout-btn.blocked {
+  border-color: #c62828;
+  color: #b71c1c;
+  background: #ffebee;
+}
+@media (max-width: 760px) {
+  .session-checkout-btn {
+    top: 82px;
+    right: 10px;
+    padding: 11px 14px;
+    font-size: 14px;
+  }
+}
+.session-checkout-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.session-checkout-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background: #f6f8f6;
+  border: 1px solid #dfe7df;
+  border-radius: 10px;
+}
+.session-checkout-number {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: #2e7d32; color: #fff; font-weight: 800; flex-shrink: 0;
+}
+.session-checkout-title { font-weight: 750; color: #1f2d20; }
+.session-checkout-meta { font-size: 12px; color: #6b746b; margin-top: 2px; }
+.session-checkout-empty { text-align: center; color: #666; padding: 24px 8px; }
+
 /* Loading spinner */
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -834,6 +900,9 @@ body.ai-osk-open #movieModal.visible {
       <div class="user-name" id="userName">Welcome!</div>
       <div class="user-card" id="userCard"></div>
     </div>
+    <button class="session-checkout-btn" id="sessionCheckoutButton" type="button" title="View DVDs checked out this session">
+      🎬 <span id="sessionCheckoutCount">SESSION DVDs: 0 / 5 • TAP TO VIEW</span> ▾
+    </button>
     <button class="btn btn-white" id="btnLogin">Sign In</button>
     <button class="btn btn-outline" id="btnLogout" style="display:none;">Sign Out</button>
   </div>
@@ -1055,6 +1124,21 @@ body.ai-osk-open #movieModal.visible {
   </div>
 </div>
 
+
+<!-- Session Checkout List Modal -->
+<div class="modal-bg" id="sessionCheckoutModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-body">
+      <div class="login-title">Movies Checked Out This Session</div>
+      <div style="text-align:center;color:#666;margin:4px 0 14px;">
+        <strong id="sessionCheckoutModalCount">0/5</strong> DVDs selected during this sign-in.
+      </div>
+      <div class="session-checkout-list" id="sessionCheckoutList"></div>
+      <button class="btn btn-lg btn-outline" id="btnCloseSessionCheckouts" style="width:100%;margin-top:16px;">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Get Now Modal (card OR name) -->
 <div class="modal-bg" id="getNowModal">
   <div class="modal" style="max-width:400px;">
@@ -1138,6 +1222,7 @@ let lastSync = null;
 let currentUser = null;
 let patronStatus = null; // Stores fines/blocking info for normal card login
 let sessionDvdCount = 0; // Get Now DVDs requested during the current kiosk sign-in session
+let sessionCheckedOutMovies = []; // Titles/details requested during this sign-in
 let currentMovie = null;
 let idleTimer = null;
 let warnInterval = null;
@@ -1732,6 +1817,8 @@ async function doLogin() {
     }
 
     sessionDvdCount = 0;
+    sessionCheckedOutMovies = [];
+    updateSessionCheckoutUI();
     $('#userName').textContent = `Hello, ${currentUser.name}!`;
     $('#userCard').textContent = `Card: ${currentUser.barcode}`;
     $('#userInfo').classList.add('visible');
@@ -1760,10 +1847,56 @@ async function doLogin() {
 }
 
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function updateSessionCheckoutUI() {
+  const btn = $('#sessionCheckoutButton');
+  const count = $('#sessionCheckoutCount');
+  if (!btn || !count) return;
+
+  count.textContent = `SESSION DVDs: ${sessionDvdCount} / 5 • TAP TO VIEW`;
+  btn.style.display = currentUser ? 'inline-flex' : 'none';
+  btn.classList.remove('warning', 'blocked');
+  if (sessionDvdCount >= 5) btn.classList.add('blocked');
+  else if (sessionDvdCount >= 4) btn.classList.add('warning');
+}
+
+function showSessionCheckouts() {
+  const list = $('#sessionCheckoutList');
+  $('#sessionCheckoutModalCount').textContent = `${sessionDvdCount}/5`;
+
+  if (!sessionCheckedOutMovies.length) {
+    list.innerHTML = '<div class="session-checkout-empty">No DVDs checked out during this session yet.</div>';
+  } else {
+    list.innerHTML = sessionCheckedOutMovies.map((movie, i) => {
+      const title = escapeHtml(movie.title || 'Unknown title');
+      const meta = [movie.shelfNumber ? `#${escapeHtml(String(movie.shelfNumber))}` : '', movie.barcode ? `Barcode ${escapeHtml(String(movie.barcode))}` : ''].filter(Boolean).join(' • ');
+      return `<div class="session-checkout-item">
+        <div class="session-checkout-number">${i + 1}</div>
+        <div><div class="session-checkout-title">${title}</div>${meta ? `<div class="session-checkout-meta">${meta}</div>` : ''}</div>
+      </div>`;
+    }).join('');
+  }
+  $('#sessionCheckoutModal').classList.add('visible');
+}
+
+function closeSessionCheckouts() {
+  $('#sessionCheckoutModal').classList.remove('visible');
+}
+
 function doLogout() {
   currentUser = null;
   patronStatus = null;
   sessionDvdCount = 0;
+  sessionCheckedOutMovies = [];
+  updateSessionCheckoutUI();
   $('#userInfo').classList.remove('visible');
   $('#btnLogin').style.display = 'block';
   $('#btnLogout').style.display = 'none';
@@ -1851,6 +1984,7 @@ async function doGetNowLogin() {
 
   // A fresh Get Now sign-in starts a fresh kiosk checkout session.
   sessionDvdCount = 0;
+  sessionCheckedOutMovies = [];
 
   // Update header
   $('#userName').textContent = `Hello, ${currentUser.name}!`;
@@ -1859,6 +1993,7 @@ async function doGetNowLogin() {
   $('#btnLogin').style.display = 'none';
   $('#btnLogout').style.display = 'block';
   if (!currentUser.nameOnly) $('#btnHoldsTab').style.display = 'block';
+  updateSessionCheckoutUI();
 
   closeGetNowModal();
   toast(`Welcome, ${currentUser.name}!`, 'success');
@@ -2150,6 +2285,12 @@ async function requestMovie(type) {
     // Count only successful Get Now requests made during this sign-in session.
     if (type === 'now' && currentUser) {
       sessionDvdCount++;
+      sessionCheckedOutMovies.push({
+        title: currentMovie.title || 'Unknown title',
+        barcode: currentMovie.barcode || null,
+        shelfNumber: getShelfNumber(currentMovie) || currentMovie.dvdId || null
+      });
+      updateSessionCheckoutUI();
     }
     
     if (type === 'hold') {
@@ -2173,6 +2314,9 @@ async function requestMovie(type) {
 
 // Event setup
 function setupEvents() {
+  $('#sessionCheckoutButton')?.addEventListener('click', showSessionCheckouts);
+  $('#btnCloseSessionCheckouts')?.addEventListener('click', closeSessionCheckouts);
+  $('#sessionCheckoutModal')?.addEventListener('click', (e) => { if (e.target.id === 'sessionCheckoutModal') closeSessionCheckouts(); });
   // On-screen keyboard setup (defined first so oskShow/oskHide are available)
   const osk = $('#oskContainer');
   let oskTarget = $('#searchInput'); // which input the OSK types into
