@@ -2058,7 +2058,19 @@ async function requestMovie(type) {
     }
   }
   
-  // Block Get Now for patrons who cannot check out (fines, limit, etc.)
+  // Get Now must be tied to a real patron account so the 5-DVD limit can be enforced.
+  if (type === 'now' && (!currentUser?.barcode || currentUser?.nameOnly)) {
+    toast('Please sign in with your library card before checking out a DVD.', 'error');
+    return;
+  }
+
+  // Fail closed: if Polaris status could not be checked, do not allow a checkout that could bypass the limit.
+  if (type === 'now' && currentUser?.barcode && !patronStatus) {
+    toast('Unable to verify your current DVD checkouts. Please sign in again or ask staff for help.', 'error');
+    return;
+  }
+
+  // Block Get Now for patrons who cannot check out (fines, DVD limit, etc.)
   if (patronStatus && !patronStatus.canCheckout && type === 'now' && currentUser?.barcode) {
     let message = '⚠️ Cannot check out DVD. ';
     if (patronStatus.blockReasons && patronStatus.blockReasons.length > 0) {
@@ -2266,9 +2278,10 @@ function setupEvents() {
       } else if (k === 'COLON') {
         input.value = val.slice(0, start) + ':' + val.slice(end);
         input.setSelectionRange(start + 1, start + 1);
-      } else {
+      } else if (k !== 'DONE') {
+        // Action keys such as DONE must never be typed into the input.
         input.value = val.slice(0, start) + k + val.slice(end);
-        input.setSelectionRange(start + 1, start + 1);
+        input.setSelectionRange(start + k.length, start + k.length);
       }
       if (oskMode === 'search') {
         clearTimeout(searchTimeout);
